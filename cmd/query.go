@@ -173,6 +173,14 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		entries[i] = gcp.ExtractFields(raw, fieldNames)
 	}
 
+	// Add service field when query spans multiple services
+	if service == "" {
+		for i, raw := range rawEntries {
+			entries[i].Fields["service"] = gcp.ExtractService(raw)
+		}
+		fieldNames = append([]string{"service"}, fieldNames...)
+	}
+
 	// Select formatter
 	var formatter format.Formatter
 	switch {

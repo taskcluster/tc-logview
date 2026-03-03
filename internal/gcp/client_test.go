@@ -142,6 +142,52 @@ func TestExtractFields_NestedJsonPayload(t *testing.T) {
 	}
 }
 
+func TestExtractService_JsonPayload(t *testing.T) {
+	raw := map[string]interface{}{
+		"jsonPayload": map[string]interface{}{
+			"serviceContext": map[string]interface{}{
+				"service": "taskcluster-queue",
+			},
+		},
+	}
+	if got := ExtractService(raw); got != "taskcluster-queue" {
+		t.Errorf("ExtractService jsonPayload: got %q, want %q", got, "taskcluster-queue")
+	}
+}
+
+func TestExtractService_ProtoPayload(t *testing.T) {
+	raw := map[string]interface{}{
+		"protoPayload": map[string]interface{}{
+			"serviceContext": map[string]interface{}{
+				"service": "taskcluster-worker-manager",
+			},
+		},
+	}
+	if got := ExtractService(raw); got != "taskcluster-worker-manager" {
+		t.Errorf("ExtractService protoPayload: got %q, want %q", got, "taskcluster-worker-manager")
+	}
+}
+
+func TestExtractService_NoServiceContext(t *testing.T) {
+	raw := map[string]interface{}{
+		"jsonPayload": map[string]interface{}{
+			"workerPoolId": "proj/misc",
+		},
+	}
+	if got := ExtractService(raw); got != "" {
+		t.Errorf("ExtractService no serviceContext: got %q, want empty", got)
+	}
+}
+
+func TestExtractService_TextPayload(t *testing.T) {
+	raw := map[string]interface{}{
+		"textPayload": "hello log line",
+	}
+	if got := ExtractService(raw); got != "" {
+		t.Errorf("ExtractService textPayload: got %q, want empty", got)
+	}
+}
+
 func TestExtractFields_ProtoPayload(t *testing.T) {
 	raw := map[string]interface{}{
 		"timestamp": "2026-03-03T12:00:00Z",

@@ -152,6 +152,25 @@ func ExtractFields(raw map[string]interface{}, fieldNames []string) format.LogEn
 	}
 }
 
+// ExtractService returns the service name from a raw GCP log entry by
+// checking serviceContext.service across all payload types (json, proto, text).
+func ExtractService(raw map[string]interface{}) string {
+	for _, key := range []string{"jsonPayload", "protoPayload"} {
+		payload, ok := raw[key].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		sc, ok := payload["serviceContext"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if s, ok := sc["service"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
 // EntriesFromJSON unmarshals a JSON array of log entries, typically loaded
 // from a cache file.
 func EntriesFromJSON(data []byte) ([]map[string]interface{}, error) {
