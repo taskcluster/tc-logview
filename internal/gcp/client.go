@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	"cloud.google.com/go/logging"
 	"cloud.google.com/go/logging/logadmin"
 	"github.com/tidwall/gjson"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/lotas/tc-logview/internal/format"
 )
@@ -54,19 +57,7 @@ func (c *Client) Query(ctx context.Context, filter string, limit int) (*QueryRes
 			return nil, fmt.Errorf("error iterating log entries: %w", err)
 		}
 
-		m := make(map[string]interface{})
-		m["timestamp"] = entry.Timestamp.Format(time.RFC3339)
-		m["severity"] = entry.Severity.String()
-		m["insertId"] = entry.InsertID
-
-		switch p := entry.Payload.(type) {
-		case map[string]interface{}:
-			m["jsonPayload"] = p
-		case string:
-			m["textPayload"] = p
-		}
-
-		result.Entries = append(result.Entries, m)
+		result.Entries = append(result.Entries, entryToMap(entry))
 	}
 
 	result.Total = len(result.Entries)
@@ -76,6 +67,53 @@ func (c *Client) Query(ctx context.Context, filter string, limit int) (*QueryRes
 // Close closes the underlying logadmin client.
 func (c *Client) Close() error {
 	return c.adminClient.Close()
+}
+
+// entryToMap converts a GCP logging Entry into a raw map capturing all
+// relevant fields: timestamp, severity, insertId, logName, labels, resource,
+// trace, spanId, and the payload (json/text/proto).
+func entryToMap(entry *logging.Entry) map[string]interface{} {
+	m := make(map[string]interface{})
+	m["timestamp"] = entry.Timestamp.Format(time.RFC3339)
+	m["severity"] = entry.Severity.String()
+	m["insertId"] = entry.InsertID
+
+	if entry.LogName != "" {
+		m["logName"] = entry.LogName
+	}
+	if len(entry.Labels) > 0 {
+		m["labels"] = entry.Labels
+	}
+	if entry.Resource != nil {
+		res := map[string]interface{}{"type": entry.Resource.Type}
+		if len(entry.Resource.Labels) > 0 {
+			res["labels"] = entry.Resource.Labels
+		}
+		m["resource"] = res
+	}
+	if entry.Trace != "" {
+		m["trace"] = entry.Trace
+	}
+	if entry.SpanID != "" {
+		m["spanId"] = entry.SpanID
+	}
+
+	switch p := entry.Payload.(type) {
+	case map[string]interface{}:
+		m["jsonPayload"] = p
+	case string:
+		m["textPayload"] = p
+	case proto.Message:
+		b, err := protojson.Marshal(p)
+		if err == nil {
+			var pm map[string]interface{}
+			if json.Unmarshal(b, &pm) == nil {
+				m["protoPayload"] = pm
+			}
+		}
+	}
+
+	return m
 }
 
 // ExtractFields extracts the timestamp and the named fields from a raw log
@@ -95,6 +133,15 @@ func ExtractFields(raw map[string]interface{}, fieldNames []string) format.LogEn
 	fields := make(map[string]string, len(fieldNames))
 	for _, name := range fieldNames {
 		val := gjson.GetBytes(jsonBytes, "jsonPayload.Fields."+name)
+		if !val.Exists() {
+			val = gjson.GetBytes(jsonBytes, "protoPayload.Fields."+name)
+		}
+		if !val.Exists() {
+			val = gjson.GetBytes(jsonBytes, "jsonPayload."+name)
+		}
+		if !val.Exists() {
+			val = gjson.GetBytes(jsonBytes, "protoPayload."+name)
+		}
 		fields[name] = val.String()
 	}
 
