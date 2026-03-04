@@ -12,12 +12,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lotas/tc-logview/internal/cache"
-	"github.com/lotas/tc-logview/internal/config"
-	"github.com/lotas/tc-logview/internal/filter"
-	"github.com/lotas/tc-logview/internal/format"
-	"github.com/lotas/tc-logview/internal/gcp"
-	"github.com/lotas/tc-logview/internal/references"
+	"github.com/taskcluster/tc-logview/internal/cache"
+	"github.com/taskcluster/tc-logview/internal/config"
+	"github.com/taskcluster/tc-logview/internal/filter"
+	"github.com/taskcluster/tc-logview/internal/format"
+	"github.com/taskcluster/tc-logview/internal/gcp"
+	"github.com/taskcluster/tc-logview/internal/references"
 	"github.com/spf13/cobra"
 )
 

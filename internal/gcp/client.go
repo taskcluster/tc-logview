@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/lotas/tc-logview/internal/format"
+	"github.com/taskcluster/tc-logview/internal/format"
 )
 
 // Client wraps a GCP logadmin client for querying Cloud Logging.

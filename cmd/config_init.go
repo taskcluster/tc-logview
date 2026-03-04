@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lotas/tc-logview/internal/config"
+	"github.com/taskcluster/tc-logview/internal/config"
 	"github.com/spf13/cobra"
 )
 

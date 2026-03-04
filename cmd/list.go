@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lotas/tc-logview/internal/config"
-	"github.com/lotas/tc-logview/internal/references"
+	"github.com/taskcluster/tc-logview/internal/config"
+	"github.com/taskcluster/tc-logview/internal/references"
 	"github.com/spf13/cobra"
 )
 

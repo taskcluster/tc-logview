@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/lotas/tc-logview/cmd"
+	"github.com/taskcluster/tc-logview/cmd"
 )
 
 func main() {

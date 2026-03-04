@@ -1,4 +1,4 @@
-module github.com/lotas/tc-logview
+module github.com/taskcluster/tc-logview
 
 go 1.26.0
 

@@ -14,13 +14,13 @@ A CLI tool for querying GCP Cloud Logging for [Taskcluster](https://taskcluster.
 ## Installation
 
 ```bash
-go install github.com/lotas/tc-logview@latest
+go install github.com/taskcluster/tc-logview@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/lotas/tc-logview.git
+git clone https://github.com/taskcluster/tc-logview.git
 cd tc-logview
 go build -o tc-logview .
 ```
@@ -189,4 +189,4 @@ tc-logview/
 
 ## Note on module path
 
-The Go module is currently `github.com/lotas/tc-logview`. Update `go.mod` and all import paths if hosting under a different path.
+The Go module is currently `github.com/taskcluster/tc-logview`. Update `go.mod` and all import paths if hosting under a different path.
