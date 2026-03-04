@@ -4,21 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/taskcluster/tc-logview/internal/cache"
 	"github.com/taskcluster/tc-logview/internal/config"
 	"github.com/taskcluster/tc-logview/internal/filter"
 	"github.com/taskcluster/tc-logview/internal/format"
 	"github.com/taskcluster/tc-logview/internal/gcp"
 	"github.com/taskcluster/tc-logview/internal/references"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -109,7 +109,6 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 	// Build filter
 	filterStr, err := filter.Build(filter.Params{
 		Cluster:    env.Cluster,
@@ -132,9 +131,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 	// Check results cache
 	resultsCache := cache.New(filepath.Join(config.CacheDir(), "results"), resultsCacheTTL)
-	snappedFrom := fromTime.Truncate(time.Minute)
-	snappedTo := toTime.Truncate(time.Minute)
-	cacheKey := resultsCache.Key(env.Cluster, snappedFrom.Format(time.RFC3339), snappedTo.Format(time.RFC3339), filterStr)
+	cacheKey := resultsCache.Key(env.Cluster, fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339), filterStr)
 
 	var rawEntries []map[string]interface{}
 	var totalCount int
@@ -192,6 +189,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	if fieldNames == nil {
 		fieldNames = []string{}
 	}
+	// Add message field when --filter is used for better context
+	if queryFilter != "" && !slices.Contains(fieldNames, "message") {
+		fieldNames = append(fieldNames, "message")
+	}
+
 	entries := make([]format.LogEntry, len(rawEntries))
 	for i, raw := range rawEntries {
 		entries[i] = gcp.ExtractFields(raw, fieldNames)
@@ -206,6 +208,14 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			entries[i].Fields["Type"] = gcp.ExtractType(raw)
 		}
 		fieldNames = append([]string{"Type"}, fieldNames...)
+	}
+
+	// Add Service column when no --service filter is specified
+	if queryService == "" {
+		for i, raw := range rawEntries {
+			entries[i].Fields["Service"] = gcp.ExtractService(raw)
+		}
+		fieldNames = append([]string{"Service"}, fieldNames...)
 	}
 
 	// Select formatter
@@ -260,10 +270,12 @@ func resolveTimeWindow(since, from, to string) (time.Time, time.Time, error) {
 		if err != nil {
 			return time.Time{}, time.Time{}, fmt.Errorf("parsing --from: %w", err)
 		}
-		return fromTime, now, nil
+		return fromTime, now.Truncate(time.Minute), nil
 	}
 
 	// Default: --since 1h
+	// Truncate to minute so that repeated runs within the same minute
+	// produce identical timestamps, allowing the results cache to hit.
 	sinceStr := since
 	if sinceStr == "" {
 		sinceStr = "1h"
@@ -274,7 +286,8 @@ func resolveTimeWindow(since, from, to string) (time.Time, time.Time, error) {
 		return time.Time{}, time.Time{}, fmt.Errorf("parsing --since: %w", err)
 	}
 
-	return now.Add(-d), now, nil
+	snapped := now.Truncate(time.Minute)
+	return snapped.Add(-d), snapped, nil
 }
 
 // parseDuration parses duration strings like "30m", "2h", "1d", "7d".
