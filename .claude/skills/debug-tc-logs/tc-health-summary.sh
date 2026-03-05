@@ -19,7 +19,7 @@ done
 
 # Helper: run tc-logview and emit only JSON lines
 query() {
-  tc-logview query "$@" --json 2>/dev/null | grep '^{' || true
+  tc-logview query "$@" --json 2>/dev/null || true
 }
 
 # Run all queries for a single environment in parallel
