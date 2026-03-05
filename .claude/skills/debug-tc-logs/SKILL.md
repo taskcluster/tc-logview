@@ -8,6 +8,17 @@ user_invocable: true
 
 You are debugging Taskcluster by querying task status/logs via the `taskcluster` CLI and GCP Cloud Logging via `tc-logview`. Follow this protocol strictly.
 
+## 0. Health Summary Script
+
+For broad "what happened?" investigations across environments, use the pre-built aggregation script before running manual queries:
+
+```bash
+bash ~/.claude/skills/debug-tc-logs/tc-health-summary.sh --since 12h
+# or: --since 6h, --envs "fx-ci", --envs "community-tc fx-ci staging", etc.
+```
+
+The script runs all key queries in parallel (errors, 500s, 403s, claim-expired, deadline-exceeded, worker-stopped) for each environment and prints a structured summary. Use it as a starting point — it will reveal which areas need deeper follow-up queries.
+
 ## 1. Prerequisites
 
 Before running any query, verify:
