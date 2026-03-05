@@ -5,7 +5,7 @@
 
 SINCE="${SINCE:-12h}"
 ENVS="${ENVS:-community-tc fx-ci}"
-LIMIT=200
+LIMIT=500
 TMPDIR_BASE=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 
@@ -39,18 +39,31 @@ query_env() {
     --since "$SINCE" --limit "$LIMIT" \
     > "$dir/api_403.jsonl" &
 
+  query -e "$env" --type worker-requested --since "$SINCE" --limit "$LIMIT" \
+    > "$dir/worker_requested.jsonl" &
+
   query -e "$env" --type worker-stopped --since "$SINCE" --limit "$LIMIT" \
     > "$dir/worker_stopped.jsonl" &
 
-  query -e "$env" \
+  # Claim-expired tasks (task-exception from claim-resolver)
+  query -e "$env" --type task-exception \
     --filter 'jsonPayload.Logger="taskcluster.queue.claim-resolver"' \
     --since "$SINCE" --limit "$LIMIT" \
     > "$dir/claim_expired.jsonl" &
 
-  query -e "$env" \
+  # Deadline-exceeded tasks (task-exception from deadline-resolver)
+  query -e "$env" --type task-exception \
     --filter 'jsonPayload.Logger="taskcluster.queue.deadline-resolver"' \
     --since "$SINCE" --limit "$LIMIT" \
     > "$dir/deadline_exceeded.jsonl" &
+
+  # Worker-manager periodic loop failures
+  for loop in workerScanner workerScannerAzure provisioner; do
+    query -e "$env" --type monitor.periodic \
+      --where "name=$loop" --where 'status!=success' \
+      --since "$SINCE" --limit "$LIMIT" \
+      > "$dir/periodic_${loop}.jsonl" &
+  done
 
   wait
 }
@@ -112,11 +125,9 @@ summarize_env() {
   local nce; nce=$(count "$dir/claim_expired.jsonl")
   echo ""
   echo "CLAIM-EXPIRED  ($nce tasks)"
-  # taskQueueId not present in resolver logs; show taskId sample instead
   if [[ $nce -gt 0 ]]; then
-    echo "  Sample task IDs:"
-    jq -r '.taskId // "?"' "$dir/claim_expired.jsonl" 2>/dev/null | head -5 \
-      | awk '{print "    " $0}' || true
+    echo "  By task queue:"
+    top_n "$dir/claim_expired.jsonl" '.taskQueueId // "unknown"'
   fi
 
   # Deadline-exceeded
@@ -124,9 +135,19 @@ summarize_env() {
   echo ""
   echo "DEADLINE-EXCEEDED  ($nde tasks)"
   if [[ $nde -gt 0 ]]; then
-    echo "  Sample task IDs:"
-    jq -r '.taskId // "?"' "$dir/deadline_exceeded.jsonl" 2>/dev/null | head -5 \
-      | awk '{print "    " $0}' || true
+    echo "  By task queue:"
+    top_n "$dir/deadline_exceeded.jsonl" '.taskQueueId // "unknown"'
+  fi
+
+  # Workers requested
+  local nwr; nwr=$(count "$dir/worker_requested.jsonl")
+  echo ""
+  echo "WORKERS REQUESTED  ($nwr total)"
+  if [[ $nwr -gt 0 ]]; then
+    echo "  By pool (top 8):"
+    top_n "$dir/worker_requested.jsonl" '.workerPoolId // "unknown"' 8
+    echo "  By provider:"
+    top_n "$dir/worker_requested.jsonl" '.providerId // "unknown"'
   fi
 
   # Worker stopped
@@ -140,10 +161,29 @@ summarize_env() {
     top_n "$dir/worker_stopped.jsonl" '.reason // "(no reason)"' 8
   fi
 
+  # Worker-manager periodic loop failures
+  echo ""
+  echo "PERIODIC LOOP FAILURES"
+  local any_periodic_fail=0
+  for loop in workerScanner workerScannerAzure provisioner; do
+    local f="$dir/periodic_${loop}.jsonl"
+    local nfail; nfail=$(count "$f")
+    if [[ $nfail -eq 0 ]]; then continue; fi
+    any_periodic_fail=1
+    echo "  $loop: ${nfail} failures"
+    echo "    By status:"
+    top_n "$f" '.status // "unknown"'
+    echo "    Max duration:"
+    local max_dur; max_dur=$(jq -r '.duration // 0' "$f" 2>/dev/null | sort -n | tail -1)
+    echo "    ${max_dur}s"
+  done
+  [[ $any_periodic_fail -eq 0 ]] && echo "  ✓ All loops healthy (no non-success runs)"
+
   # Limit warnings
   echo ""
   local warned=0
-  for f in errors api_500 api_403 claim_expired deadline_exceeded worker_stopped; do
+  for f in errors api_500 api_403 claim_expired deadline_exceeded worker_requested worker_stopped \
+           periodic_workerScanner periodic_workerScannerAzure periodic_provisioner; do
     local c; c=$(count "$dir/$f.jsonl")
     if [[ "$c" -ge "$LIMIT" ]]; then
       echo "  ⚠  $f hit limit ($LIMIT) — results truncated, tighten filters or reduce --since"

@@ -221,7 +221,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 
 	// Add message field when --filter is used or there are just two columns (ts, service)
-	if (queryFilter != "" || len(fieldNames) < 3 ) && !slices.Contains(fieldNames, "message") {
+	if (queryFilter != "" || len(types) == 0 ) && !slices.Contains(fieldNames, "message") {
 		fieldNames = append(fieldNames, "message")
 	}
 
