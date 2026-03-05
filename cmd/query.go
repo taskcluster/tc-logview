@@ -189,10 +189,6 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	if fieldNames == nil {
 		fieldNames = []string{}
 	}
-	// Add message field when --filter is used for better context
-	if queryFilter != "" && !slices.Contains(fieldNames, "message") {
-		fieldNames = append(fieldNames, "message")
-	}
 
 	entries := make([]format.LogEntry, len(rawEntries))
 	for i, raw := range rawEntries {
@@ -216,6 +212,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			entries[i].Fields["Service"] = gcp.ExtractService(raw)
 		}
 		fieldNames = append([]string{"Service"}, fieldNames...)
+	}
+
+	// Add message field when --filter is used or there are just two columns (ts, service)
+	if (queryFilter != "" || len(fieldNames) < 3 ) && !slices.Contains(fieldNames, "message") {
+		fieldNames = append(fieldNames, "message")
 	}
 
 	// Select formatter
