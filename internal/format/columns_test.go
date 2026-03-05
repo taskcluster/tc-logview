@@ -85,7 +85,7 @@ func TestColumnsAligned(t *testing.T) {
 
 func TestFooterWithTruncation(t *testing.T) {
 	var buf bytes.Buffer
-	c := &Columns{}
+	c := &Columns{FooterWriter: &buf}
 	err := c.Format(&buf, testEntries(), testFieldOrder, 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -99,7 +99,7 @@ func TestFooterWithTruncation(t *testing.T) {
 
 func TestFooterWithoutTruncation(t *testing.T) {
 	var buf bytes.Buffer
-	c := &Columns{}
+	c := &Columns{FooterWriter: &buf}
 	err := c.Format(&buf, testEntries(), testFieldOrder, 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

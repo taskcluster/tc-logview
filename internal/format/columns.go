@@ -8,7 +8,9 @@ import (
 )
 
 // Columns formats log entries as aligned text columns.
-type Columns struct{}
+type Columns struct {
+	FooterWriter io.Writer // if nil, footer is suppressed
+}
 
 // camelToUpperSnake converts a camelCase string to UPPER_SNAKE_CASE.
 // For example, "workerPoolId" becomes "WORKER_POOL_ID".
@@ -69,12 +71,15 @@ func (c *Columns) Format(w io.Writer, entries []LogEntry, fieldOrder []string, t
 	}
 
 	// Print footer.
+	if c.FooterWriter == nil {
+		return nil
+	}
 	count := len(entries)
 	if total > count {
-		_, err := fmt.Fprintf(w, "Showing %d of %d entries\n", count, total)
+		_, err := fmt.Fprintf(c.FooterWriter, "Showing %d of %d entries\n", count, total)
 		return err
 	}
-	_, err := fmt.Fprintf(w, "%d entries\n", count)
+	_, err := fmt.Fprintf(c.FooterWriter, "%d entries\n", count)
 	return err
 }
 

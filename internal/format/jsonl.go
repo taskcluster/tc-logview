@@ -7,7 +7,9 @@ import (
 )
 
 // JSONL formats log entries as JSON Lines (one JSON object per line).
-type JSONL struct{}
+type JSONL struct {
+	FooterWriter io.Writer // if nil, footer is suppressed
+}
 
 // Format writes entries as JSONL to w. Each line contains only the timestamp
 // (as "ts") and the fields specified by fieldOrder.
@@ -27,11 +29,14 @@ func (j *JSONL) Format(w io.Writer, entries []LogEntry, fieldOrder []string, tot
 	}
 
 	// Print footer.
+	if j.FooterWriter == nil {
+		return nil
+	}
 	count := len(entries)
 	if total > count {
-		_, err := fmt.Fprintf(w, "Showing %d of %d entries\n", count, total)
+		_, err := fmt.Fprintf(j.FooterWriter, "Showing %d of %d entries\n", count, total)
 		return err
 	}
-	_, err := fmt.Fprintf(w, "%d entries\n", count)
+	_, err := fmt.Fprintf(j.FooterWriter, "%d entries\n", count)
 	return err
 }

@@ -10,6 +10,7 @@ import (
 
 var (
 	envFlag string
+	verbose bool
 	cfg     *config.Config
 )
 
@@ -31,6 +32,13 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&envFlag, "env", "e", "", "environment name")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show diagnostic messages")
+}
+
+func logInfo(format string, args ...any) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+	}
 }
 
 func Execute() error {
@@ -50,7 +58,7 @@ func resolveEnv() (*config.Environment, error) {
 		for name, env := range cfg.Environments {
 			if env.RootURL == rootURL {
 				e := env
-				fmt.Fprintf(os.Stderr, "Auto-detected environment: %s\n", name)
+				logInfo("Auto-detected environment: %s", name)
 				return &e, nil
 			}
 		}

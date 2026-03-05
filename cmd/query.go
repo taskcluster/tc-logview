@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -61,6 +62,11 @@ func init() {
 }
 
 func runQuery(cmd *cobra.Command, args []string) error {
+	// When not using --json/--raw, default to verbose unless explicitly set
+	if !queryJSON && !queryRaw && !cmd.Flags().Changed("verbose") {
+		verbose = true
+	}
+
 	env, err := resolveEnv()
 	if err != nil {
 		return err
@@ -91,7 +97,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			if len(types) == 0 {
 				return fmt.Errorf("no log types found with fields: %s", strings.Join(whereFields, ", "))
 			}
-			fmt.Fprintf(os.Stderr, "Matched types: %s\n", strings.Join(types, ", "))
+			logInfo("Matched types: %s", strings.Join(types, ", "))
 		}
 
 		if len(types) > 0 {
@@ -126,8 +132,8 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	filterStr += fmt.Sprintf(` AND timestamp>="%s" AND timestamp<="%s"`,
 		fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339))
 
-	fmt.Fprintf(os.Stderr, "Filter: %s\n", filterStr)
-	fmt.Fprintf(os.Stderr, "Time: %s to %s\n", fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339))
+	logInfo("Filter: %s", filterStr)
+	logInfo("Time: %s to %s", fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339))
 
 	// Check results cache
 	resultsCache := cache.New(filepath.Join(config.CacheDir(), "results"), resultsCacheTTL)
@@ -140,7 +146,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		if data, ok := resultsCache.Get(cacheKey); ok {
 			rawEntries, err = gcp.EntriesFromJSON(data)
 			if err == nil {
-				fmt.Fprintf(os.Stderr, "Using cached results (%d entries)\n", len(rawEntries))
+				logInfo("Using cached results (%d entries)", len(rawEntries))
 				totalCount = len(rawEntries)
 			}
 		}
@@ -155,7 +161,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		}
 		defer client.Close()
 
-		fmt.Fprintln(os.Stderr, "Querying GCP Cloud Logging...")
+		logInfo("Querying GCP Cloud Logging...")
 		result, err := client.Query(ctx, filterStr, queryLimit+queryOffset)
 		if err != nil {
 			return fmt.Errorf("querying logs: %w", err)
@@ -225,9 +231,13 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	case queryRaw:
 		formatter = &format.Raw{}
 	case queryJSON:
-		formatter = &format.JSONL{}
+		var fw io.Writer
+		if verbose {
+			fw = os.Stderr
+		}
+		formatter = &format.JSONL{FooterWriter: fw}
 	default:
-		formatter = &format.Columns{}
+		formatter = &format.Columns{FooterWriter: os.Stdout}
 	}
 
 	return formatter.Format(os.Stdout, entries, fieldNames, totalCount)
