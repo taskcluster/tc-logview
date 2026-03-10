@@ -8,6 +8,7 @@ import (
 // Params holds the inputs for building a GCP log filter string.
 type Params struct {
 	Cluster      string            // from env config — resource.labels.cluster_name
+	SkipCluster  bool              // if true, omit resource.labels.cluster_name (e.g. for CloudSQL)
 	LogTypes     []string          // --type flag(s) — jsonPayload.Type
 	Service      string            // --service flag or auto-detected — jsonPayload.serviceContext.service
 	Where        []string          // --where flags, field shorthand like: workerPoolId="proj-misc/generic"
@@ -25,13 +26,15 @@ var operators = []string{"!=", ">=", "<=", "=~", "!~", "=", ">", "<"}
 // It returns an error if required fields are missing or a --where entry
 // references an unknown field name.
 func Build(p Params) (string, error) {
-	if p.Cluster == "" {
+	if !p.SkipCluster && p.Cluster == "" {
 		return "", fmt.Errorf("cluster is required")
 	}
 
 	var parts []string
 
-	parts = append(parts, fmt.Sprintf("resource.labels.cluster_name=%q", p.Cluster))
+	if !p.SkipCluster {
+		parts = append(parts, fmt.Sprintf("resource.labels.cluster_name=%q", p.Cluster))
+	}
 
 	if p.PresetFilter != "" {
 		parts = append(parts, p.PresetFilter)

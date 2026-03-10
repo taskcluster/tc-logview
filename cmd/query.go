@@ -95,9 +95,20 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 	if preset != nil {
 		// Preset mode: use preset's filter and field mappings
+		presetFilter := preset.Filter
+		skipCluster := false
+		if strings.HasPrefix(preset.Name, "cloudsql.") {
+			if env.CloudSQLInstance == "" {
+				return fmt.Errorf("preset %q requires cloudsql_instance in env config (e.g. cloudsql_instance: \"taskcluster-prod-firefoxcitc-v1\")", preset.Name)
+			}
+			databaseID := env.ProjectID + ":" + env.CloudSQLInstance
+			presetFilter = fmt.Sprintf("resource.labels.database_id=%q AND %s", databaseID, preset.Filter)
+			skipCluster = true
+		}
 		filterStr, err := filter.Build(filter.Params{
 			Cluster:      env.Cluster,
-			PresetFilter: preset.Filter,
+			SkipCluster:  skipCluster,
+			PresetFilter: presetFilter,
 			Where:        queryWhere,
 			RawFilter:    queryFilter,
 			FieldMap:     preset.Fields,
@@ -173,11 +184,22 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 		// Extract fields — use preset field names + message
 		fieldNames := preset.FieldNames()
-		fieldNames = append(fieldNames, "message")
+		if !slices.Contains(fieldNames, "message") {
+			fieldNames = append(fieldNames, "message")
+		}
 
 		entries := make([]format.LogEntry, len(rawEntries))
 		for i, raw := range rawEntries {
 			entries[i] = gcp.ExtractFieldsWithPaths(raw, fieldNames, preset.Fields)
+		}
+
+		// Apply message transform if the preset defines one (e.g. postgres log parsing)
+		if preset.MessageTransform != nil {
+			for i := range entries {
+				if msg := entries[i].Fields["message"]; msg != "" {
+					entries[i].Fields["message"] = preset.MessageTransform(msg)
+				}
+			}
 		}
 
 		fieldNames = filterNonEmptyFields(entries, fieldNames)

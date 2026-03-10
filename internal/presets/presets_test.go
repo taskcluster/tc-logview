@@ -62,6 +62,33 @@ func TestAll_Sorted(t *testing.T) {
 	}
 }
 
+func TestParsePostgresMessage(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{
+			input: "2026-03-10 12:28:59.738 UTC [511373]: [1-1] db=taskcluster,user=taskcluster_queue ERROR:  duplicate key value violates unique constraint \"queue_artifacts_pkey\"",
+			want:  "db=taskcluster,user=taskcluster_queue ERROR:  duplicate key value violates unique constraint \"queue_artifacts_pkey\"",
+		},
+		{
+			input: "2026-03-10 12:00:00.000 UTC [99]: [2-1] db=taskcluster,user=tc LOG:  statement: SELECT 1",
+			want:  "db=taskcluster,user=tc LOG:  statement: SELECT 1",
+		},
+		{
+			// non-matching format passes through unchanged
+			input: "just some text",
+			want:  "just some text",
+		},
+	}
+	for _, tt := range tests {
+		got := parsePostgresMessage(tt.input)
+		if got != tt.want {
+			t.Errorf("parsePostgresMessage(%q)\n  got:  %q\n  want: %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestFieldNames_ReturnsKeys(t *testing.T) {
 	p := Lookup("k8s.events")
 	if p == nil {

@@ -258,6 +258,30 @@ func TestBuild_PresetFilterWithRawFilter(t *testing.T) {
 	}
 }
 
+func TestBuild_SkipCluster(t *testing.T) {
+	got, err := Build(Params{
+		SkipCluster:  true,
+		PresetFilter: `resource.labels.database_id="proj:instance" AND resource.type="cloudsql_database"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(got, "cluster_name") {
+		t.Errorf("SkipCluster=true should omit cluster_name, got: %s", got)
+	}
+	if !strings.Contains(got, `resource.labels.database_id="proj:instance"`) {
+		t.Errorf("missing database_id filter, got: %s", got)
+	}
+}
+
+func TestBuild_SkipClusterRequiresNoCluster(t *testing.T) {
+	// Should not error even when Cluster is empty, if SkipCluster is true
+	_, err := Build(Params{SkipCluster: true})
+	if err != nil {
+		t.Fatalf("unexpected error with SkipCluster=true and empty Cluster: %v", err)
+	}
+}
+
 func TestBuild_PresetFilterUnknownField(t *testing.T) {
 	_, err := Build(Params{
 		Cluster:      "c",

@@ -1,14 +1,18 @@
 package presets
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Preset defines a curated GCP Cloud Logging query for infrastructure events.
 type Preset struct {
-	Name        string            // e.g. "k8s.pod-crash"
-	Service     string            // e.g. "k8s" — derived from prefix
-	Description string            // human-readable description
-	Filter      string            // GCP filter fragment (no cluster/time)
-	Fields      map[string]string // shorthand → GCP path for --where
+	Name             string            // e.g. "k8s.pod-crash"
+	Service          string            // e.g. "k8s" — derived from prefix
+	Description      string            // human-readable description
+	Filter           string            // GCP filter fragment (no cluster/time)
+	Fields           map[string]string // shorthand → GCP path for --where
+	MessageTransform func(string) string // optional post-processor for the message field
 }
 
 // FieldNames returns sorted field shorthand names for this preset.
@@ -19,6 +23,29 @@ func (p *Preset) FieldNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// parsePostgresMessage strips the standard postgres log prefix from a textPayload,
+// returning content starting from "db=...,user=..." onwards.
+// Input:  "2026-03-10 12:28:59.738 UTC [511373]: [1-1] db=taskcluster,user=queue ERROR: ..."
+// Output: "db=taskcluster,user=queue ERROR: ..."
+func parsePostgresMessage(s string) string {
+	// Format: "<datetime> UTC [pid]: [line-N] <content>"
+	// Find "]: [" to skip past the pid section, then "] " to skip the line counter.
+	idx := strings.Index(s, "]: [")
+	if idx < 0 {
+		return s
+	}
+	rest := s[idx+4:] // skip "]: ["
+	end := strings.Index(rest, "] ")
+	if end < 0 {
+		return s
+	}
+	return rest[end+2:]
+}
+
+var cloudsqlFields = map[string]string{
+	"message": "textPayload",
 }
 
 // Common field mappings reused across presets.
@@ -42,18 +69,20 @@ var eventFields = map[string]string{
 // All is the sorted list of all available presets.
 var All = []Preset{
 	{
-		Name:        "cloudsql.errors",
-		Service:     "cloudsql",
-		Description: "CloudSQL errors",
-		Filter:      `resource.type="cloudsql_database" severity>=ERROR`,
-		Fields:      nil,
+		Name:             "cloudsql.errors",
+		Service:          "cloudsql",
+		Description:      "CloudSQL errors",
+		Filter:           `resource.type="cloudsql_database" severity>=ERROR`,
+		Fields:           cloudsqlFields,
+		MessageTransform: parsePostgresMessage,
 	},
 	{
-		Name:        "cloudsql.slow-query",
-		Service:     "cloudsql",
-		Description: "CloudSQL slow queries",
-		Filter:      `resource.type="cloudsql_database" "duration:"`,
-		Fields:      nil,
+		Name:             "cloudsql.slow-query",
+		Service:          "cloudsql",
+		Description:      "CloudSQL slow queries",
+		Filter:           `resource.type="cloudsql_database" "duration:"`,
+		Fields:           cloudsqlFields,
+		MessageTransform: parsePostgresMessage,
 	},
 	{
 		Name:        "k8s.autoscaler",

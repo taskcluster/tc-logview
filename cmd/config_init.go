@@ -41,11 +41,13 @@ environments:
   fx-ci:
     project_id: "moz-fx-taskcluster-prod-4b87"
     cluster: "taskcluster-firefoxcitc-v1"
+    cloudsql_instance: "taskcluster-prod-firefoxcitc-v1"
     root_url: "https://firefox-ci-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
   community-tc:
     project_id: "moz-fx-taskcluster-prod-4b87"
     cluster: "taskcluster-communitytc-v1"
+    cloudsql_instance: "taskcluster-prod-communitytc-v1"
     root_url: "https://community-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
 `
