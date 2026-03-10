@@ -19,6 +19,7 @@ import (
 	"github.com/taskcluster/tc-logview/internal/filter"
 	"github.com/taskcluster/tc-logview/internal/format"
 	"github.com/taskcluster/tc-logview/internal/gcp"
+	"github.com/taskcluster/tc-logview/internal/presets"
 	"github.com/taskcluster/tc-logview/internal/references"
 )
 
@@ -84,6 +85,118 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	var types []string
 	if queryType != "" {
 		types = strings.Split(queryType, ",")
+	}
+
+	// Check if the type is a preset (e.g. k8s.pod-crash, cloudsql.errors)
+	var preset *presets.Preset
+	if len(types) == 1 {
+		preset = presets.Lookup(types[0])
+	}
+
+	if preset != nil {
+		// Preset mode: use preset's filter and field mappings
+		filterStr, err := filter.Build(filter.Params{
+			Cluster:      env.Cluster,
+			PresetFilter: preset.Filter,
+			Where:        queryWhere,
+			RawFilter:    queryFilter,
+			FieldMap:     preset.Fields,
+			FieldNames:   preset.FieldNames(),
+		})
+		if err != nil {
+			return fmt.Errorf("building filter: %w", err)
+		}
+
+		// Add time constraints
+		fromTime, toTime, err := resolveTimeWindow(querySince, queryFrom, queryTo)
+		if err != nil {
+			return err
+		}
+		filterStr += fmt.Sprintf(` AND timestamp>="%s" AND timestamp<="%s"`,
+			fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339))
+
+		logInfo("Filter: %s", filterStr)
+		logInfo("Time: %s to %s", fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339))
+
+		// Query, cache, format — same as TC path
+		resultsCache := cache.New(filepath.Join(config.CacheDir(), "results"), resultsCacheTTL)
+		cacheKey := resultsCache.Key(env.Cluster, fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339), filterStr)
+
+		var rawEntries []map[string]interface{}
+		var totalCount int
+
+		if !queryNoCache {
+			if data, ok := resultsCache.Get(cacheKey); ok {
+				rawEntries, err = gcp.EntriesFromJSON(data)
+				if err == nil {
+					logInfo("Using cached results (%d entries)", len(rawEntries))
+					totalCount = len(rawEntries)
+				}
+			}
+		}
+
+		if rawEntries == nil {
+			ctx := context.Background()
+			client, err := gcp.NewClient(ctx, env.ProjectID, env.KeyPath)
+			if err != nil {
+				return fmt.Errorf("creating GCP client: %w", err)
+			}
+			defer client.Close()
+
+			logInfo("Querying GCP Cloud Logging...")
+			result, err := client.Query(ctx, filterStr, queryLimit+queryOffset)
+			if err != nil {
+				return fmt.Errorf("querying logs: %w", err)
+			}
+
+			rawEntries = result.Entries
+			totalCount = result.Total
+
+			if data, err := json.Marshal(rawEntries); err == nil {
+				resultsCache.Set(cacheKey, data)
+			}
+		}
+
+		// Apply offset and limit
+		if queryOffset > 0 {
+			if queryOffset >= len(rawEntries) {
+				rawEntries = nil
+			} else {
+				rawEntries = rawEntries[queryOffset:]
+			}
+		}
+		if queryLimit > 0 && queryLimit < len(rawEntries) {
+			rawEntries = rawEntries[:queryLimit]
+		}
+
+		slices.Reverse(rawEntries)
+
+		// Extract fields — use preset field names + message
+		fieldNames := preset.FieldNames()
+		fieldNames = append(fieldNames, "message")
+
+		entries := make([]format.LogEntry, len(rawEntries))
+		for i, raw := range rawEntries {
+			entries[i] = gcp.ExtractFieldsWithPaths(raw, fieldNames, preset.Fields)
+		}
+
+		fieldNames = filterNonEmptyFields(entries, fieldNames)
+
+		var formatter format.Formatter
+		switch {
+		case queryRaw:
+			formatter = &format.Raw{}
+		case queryJSON:
+			var fw io.Writer
+			if verbose {
+				fw = os.Stderr
+			}
+			formatter = &format.JSONL{FooterWriter: fw}
+		default:
+			formatter = &format.Columns{FooterWriter: os.Stdout}
+		}
+
+		return formatter.Format(os.Stdout, entries, fieldNames, totalCount)
 	}
 
 	// Resolve types and fields

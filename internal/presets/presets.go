@@ -28,7 +28,8 @@ var podFields = map[string]string{
 }
 
 var nodeFields = map[string]string{
-	"node": "resource.labels.node_name",
+	"node":    "resource.labels.node_name",
+	"message": "MESSAGE",
 }
 
 var eventFields = map[string]string{
@@ -62,6 +63,13 @@ var All = []Preset{
 		Fields:      nil,
 	},
 	{
+		Name:        "k8s.container-died",
+		Service:     "k8s",
+		Description: "Container died events (includes normal exits)",
+		Filter:      `resource.type="k8s_node" (jsonPayload.MESSAGE:"ContainerDied" OR protoPayload.MESSAGE:"ContainerDied")`,
+		Fields:      nodeFields,
+	},
+	{
 		Name:        "k8s.events",
 		Service:     "k8s",
 		Description: "All kubernetes events (catch-all)",
@@ -79,7 +87,7 @@ var All = []Preset{
 		Name:        "k8s.oom-kill",
 		Service:     "k8s",
 		Description: "OOMKilled containers (node-level)",
-		Filter:      `resource.type="k8s_node" (jsonPayload.MESSAGE:"TaskOOM" OR jsonPayload.MESSAGE:"ContainerDied")`,
+		Filter:      `resource.type="k8s_node" (jsonPayload.MESSAGE:"TaskOOM" OR protoPayload.MESSAGE:"TaskOOM")`,
 		Fields:      nodeFields,
 	},
 	{

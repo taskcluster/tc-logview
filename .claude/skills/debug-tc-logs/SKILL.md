@@ -255,7 +255,65 @@ tc-logview query -e <env> --type simple-estimate \
   --where 'workerPoolId="<POOL_ID>"' --since 2h
 ```
 
-## 8. GCP Log Field Reference
+## 8. Infrastructure Log Presets
+
+For debugging infrastructure-level issues (not TC application logs), use preset types:
+
+### Kubernetes Events
+```bash
+# Pod crash loops
+tc-logview query -e <env> --type k8s.pod-crash --since 2h
+
+# Pod crashes in a specific namespace
+tc-logview query -e <env> --type k8s.pod-crash --where 'namespace="taskcluster"'
+
+# OOM kills (node-level)
+tc-logview query -e <env> --type k8s.oom-kill --since 6h
+
+# Container died events (includes normal CronJob exits — use to investigate unexpected terminations)
+tc-logview query -e <env> --type k8s.container-died --since 2h
+
+# Health probe failures
+tc-logview query -e <env> --type k8s.pod-unhealthy --where 'namespace="taskcluster"'
+
+# Scheduling failures
+tc-logview query -e <env> --type k8s.pod-scheduling --since 2h
+
+# Pod evictions
+tc-logview query -e <env> --type k8s.pod-evicted --since 6h
+
+# Node memory/disk/PID pressure
+tc-logview query -e <env> --type k8s.node-pressure --since 2h
+
+# Cluster autoscaler decisions
+tc-logview query -e <env> --type k8s.autoscaler --since 2h
+
+# All k8s events (catch-all) — filter with --where reason=<reason>
+tc-logview query -e <env> --type k8s.events --where 'pod="worker-manager-abc"' --since 2h
+```
+
+### CloudSQL
+```bash
+# Database errors
+tc-logview query -e <env> --type cloudsql.errors --since 2h
+
+# Slow queries
+tc-logview query -e <env> --type cloudsql.slow-query --since 2h
+```
+
+### Preset field shorthands for --where:
+
+| Shorthand | GCP path | Available in |
+|---|---|---|
+| `pod` | `jsonPayload.involvedObject.name` | k8s.pod-*, k8s.events |
+| `namespace` | `resource.labels.namespace_name` | k8s.pod-*, k8s.events |
+| `node` | `resource.labels.node_name` | k8s.oom-kill, k8s.container-died, k8s.node-pressure, k8s.events |
+| `message` | `MESSAGE` (payload) | k8s.oom-kill, k8s.container-died, k8s.node-pressure |
+| `reason` | `jsonPayload.reason` | k8s.events |
+
+Use `tc-logview list --service k8s` or `tc-logview list --service cloudsql` to see all available presets.
+
+## 9. GCP Log Field Reference
 
 `tc-logview` handles field paths automatically. For `--where` use the short field name; for `--filter` use the full path.
 
@@ -279,7 +337,7 @@ Important: `statusCode` is a **string** in the logs — filter with `="403"` not
 
 Use `tc-logview list --service <name>` to see all available fields for each log type.
 
-## 9. Task-Level Debugging Workflow
+## 10. Task-Level Debugging Workflow
 
 Step-by-step protocol when given a task ID or task URL:
 
@@ -290,7 +348,7 @@ Step-by-step protocol when given a task ID or task URL:
 5. **Identify worker** — from task status runs, extract `workerId` and `workerGroup`
 6. **Cross-reference with TC service logs** — use `tc-logview query` filtered by taskId or workerId (see Common Query Patterns)
 
-## 10. Common Task Failure Patterns
+## 11. Common Task Failure Patterns
 
 | Pattern | Log Signature | Next Step |
 |---|---|---|
@@ -302,7 +360,7 @@ Step-by-step protocol when given a task ID or task URL:
 | GCP preemption | `google_guest_agent ERROR metadata.go: Error watching metadata: context canceled` | Check GCP audit logs for instance lifecycle |
 | Worker idle shutdown | Worker hits idle timeout after task failure | Not a root cause — look earlier in timeline |
 
-## 11. Debugging Decision Tree
+## 12. Debugging Decision Tree
 
 Map user intent to query sequence:
 
@@ -357,7 +415,22 @@ Map user intent to query sequence:
 5. Note: PR/push processing is async — the webhook handler returns 200 immediately, then the handlers process the queued message; template errors may appear in the api logger (for direct preview calls) or not surface at all if the handlers swallow them
 6. `issue_comment` webhooks containing the template text will match broad text searches for variable names — filter with `--filter 'severity="ERROR"'` to avoid false positives
 
-## 12. Auth Setup
+**"Service pod keeps restarting / not starting"**
+1. Check for crash loops: `--type k8s.pod-crash --where 'namespace="taskcluster"' --since 2h`
+2. Check for OOM kills: `--type k8s.oom-kill --since 2h`
+3. Check for health probe failures: `--type k8s.pod-unhealthy --where 'namespace="taskcluster"' --since 2h`
+4. Check all events for the specific pod: `--type k8s.events --where 'pod="<pod-name>"' --since 2h`
+
+**"Cluster scaling issues / pods pending"**
+1. Check scheduling failures: `--type k8s.pod-scheduling --since 2h`
+2. Check autoscaler decisions: `--type k8s.autoscaler --since 2h`
+3. Check node pressure: `--type k8s.node-pressure --since 2h`
+
+**"Database connection issues"**
+1. Check CloudSQL errors: `--type cloudsql.errors --since 2h`
+2. Check for slow queries: `--type cloudsql.slow-query --since 2h`
+
+## 13. Auth Setup
 
 When key files are missing, guide the user through setup. Keys go in `~/.config/tc-logview/keys/` (update `key_path` in `~/.config/tc-logview/config.yaml` to match).
 
@@ -410,7 +483,7 @@ gcloud iam service-accounts keys create ~/.config/tc-logview/keys/tc-dev.json \
 
 After placing the key, update `~/.config/tc-logview/config.yaml` with the correct `key_path` for that environment, then run `tc-logview sync`.
 
-## 13. Anti-Patterns
+## 14. Anti-Patterns
 
 - **Never** run a query without `--limit`
 - **Never** start with `--since 30d` — always start narrow (`--since 1h`) and widen
@@ -420,7 +493,7 @@ After placing the key, update `~/.config/tc-logview/config.yaml` with the correc
 - **Never** use `--limit` greater than 500
 - **Prefer** `--type` + `--where` over raw `--filter` — the tool validates field names and auto-narrows the service scope
 
-## 14. Current Limitations
+## 15. Current Limitations
 
 - **Worker system logs (Papertrail)**: Not yet automated — when worker-level logs are needed, tell the user to check Papertrail manually with the worker hostname
 - **GCP Audit Logs for VM lifecycle**: Worker VMs may run in different GCP projects depending on the pool/provider; infra-level debugging requires knowing which project, which varies by environment and pool configuration

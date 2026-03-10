@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/logging"
@@ -150,6 +151,64 @@ func ExtractFields(raw map[string]interface{}, fieldNames []string) format.LogEn
 		Fields:    fields,
 		Raw:       raw,
 	}
+}
+
+// ExtractFieldsWithPaths extracts fields using an optional path mapping.
+// When pathMap provides a GCP path for a field name (e.g. "node" → "resource.labels.node_name"),
+// that path is used directly. Fields not in the map fall back to the standard lookup chain.
+func ExtractFieldsWithPaths(raw map[string]interface{}, fieldNames []string, pathMap map[string]string) format.LogEntry {
+	jsonBytes, err := json.Marshal(raw)
+	if err != nil {
+		return format.LogEntry{Timestamp: "", Fields: make(map[string]string), Raw: raw}
+	}
+
+	ts := gjson.GetBytes(jsonBytes, "timestamp").String()
+
+	fields := make(map[string]string, len(fieldNames))
+	for _, name := range fieldNames {
+		// Try mapped path first
+		if pathMap != nil {
+			if gcpPath, ok := pathMap[name]; ok {
+				if v := resolvePathField(jsonBytes, gcpPath); v != "" {
+					fields[name] = v
+					continue
+				}
+			}
+		}
+		// Fall back to standard lookup
+		val := gjson.GetBytes(jsonBytes, "jsonPayload.Fields."+name)
+		if !val.Exists() {
+			val = gjson.GetBytes(jsonBytes, "protoPayload.Fields."+name)
+		}
+		if !val.Exists() {
+			val = gjson.GetBytes(jsonBytes, "jsonPayload."+name)
+		}
+		if !val.Exists() {
+			val = gjson.GetBytes(jsonBytes, "protoPayload."+name)
+		}
+		fields[name] = val.String()
+	}
+
+	return format.LogEntry{Timestamp: ts, Fields: fields, Raw: raw}
+}
+
+// resolvePathField resolves a GCP path from a preset's field mapping.
+// For dotted paths (e.g. "resource.labels.node_name") it tries the path directly.
+// For bare names (e.g. "MESSAGE") it probes jsonPayload and protoPayload.
+func resolvePathField(jsonBytes []byte, gcpPath string) string {
+	val := gjson.GetBytes(jsonBytes, gcpPath)
+	if val.Exists() {
+		return val.String()
+	}
+	if !strings.Contains(gcpPath, ".") {
+		for _, prefix := range []string{"jsonPayload", "protoPayload"} {
+			val = gjson.GetBytes(jsonBytes, prefix+"."+gcpPath)
+			if val.Exists() {
+				return val.String()
+			}
+		}
+	}
+	return ""
 }
 
 // ExtractService returns the service name from a raw GCP log entry by

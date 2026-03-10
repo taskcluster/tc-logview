@@ -201,3 +201,74 @@ func TestBuild_MultipleTypesWithWhere(t *testing.T) {
 		t.Errorf("missing where clause, got: %s", got)
 	}
 }
+
+func TestBuild_PresetFilter(t *testing.T) {
+	got, err := Build(Params{
+		Cluster:      "my-cluster",
+		PresetFilter: `resource.type="k8s_pod" log_id("events") jsonPayload.reason="BackOff"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `resource.labels.cluster_name="my-cluster" AND resource.type="k8s_pod" log_id("events") jsonPayload.reason="BackOff"`
+	if got != want {
+		t.Errorf("got:\n  %s\nwant:\n  %s", got, want)
+	}
+	if strings.Contains(got, "jsonPayload.Type") {
+		t.Errorf("preset filter should not contain jsonPayload.Type, got: %s", got)
+	}
+}
+
+func TestBuild_PresetFilterWithFieldMap(t *testing.T) {
+	got, err := Build(Params{
+		Cluster:      "my-cluster",
+		PresetFilter: `resource.type="k8s_pod" log_id("events")`,
+		Where:        []string{`pod="my-pod"`},
+		FieldMap: map[string]string{
+			"pod":       "jsonPayload.involvedObject.name",
+			"namespace": "resource.labels.namespace_name",
+		},
+		FieldNames: []string{"pod", "namespace"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(got, `jsonPayload.involvedObject.name="my-pod"`) {
+		t.Errorf("should expand pod via FieldMap, got: %s", got)
+	}
+	if strings.Contains(got, "jsonPayload.Fields.pod") {
+		t.Errorf("preset where should not use jsonPayload.Fields, got: %s", got)
+	}
+}
+
+func TestBuild_PresetFilterWithRawFilter(t *testing.T) {
+	got, err := Build(Params{
+		Cluster:      "c",
+		PresetFilter: `resource.type="k8s_node"`,
+		RawFilter:    `severity="ERROR"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(got, `resource.type="k8s_node"`) {
+		t.Errorf("missing preset filter, got: %s", got)
+	}
+	if !strings.Contains(got, `(severity="ERROR")`) {
+		t.Errorf("missing raw filter, got: %s", got)
+	}
+}
+
+func TestBuild_PresetFilterUnknownField(t *testing.T) {
+	_, err := Build(Params{
+		Cluster:      "c",
+		PresetFilter: `resource.type="k8s_pod"`,
+		Where:        []string{`badField="x"`},
+		FieldMap: map[string]string{
+			"pod": "jsonPayload.involvedObject.name",
+		},
+		FieldNames: []string{"pod"},
+	})
+	if err == nil {
+		t.Fatal("expected error for unknown field in preset context")
+	}
+}

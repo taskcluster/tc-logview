@@ -115,6 +115,52 @@ tc-logview query -e fx-ci --type worker-stopped \
   --limit 100 --offset 200
 ```
 
+### Infrastructure log presets
+
+Query Kubernetes and CloudSQL events without constructing GCP filters:
+
+```bash
+# Pod crash loops in the last hour
+tc-logview query -e fx-ci --type k8s.pod-crash
+
+# Pod crashes in a specific namespace
+tc-logview query -e fx-ci --type k8s.pod-crash --where 'namespace="taskcluster"'
+
+# OOM kills in the last 6 hours
+tc-logview query -e fx-ci --type k8s.oom-kill --since 6h
+
+# All k8s events for a specific pod
+tc-logview query -e fx-ci --type k8s.events --where 'pod="worker-manager-abc"'
+
+# Health probe failures
+tc-logview query -e fx-ci --type k8s.pod-unhealthy --where 'namespace="taskcluster"'
+
+# Cluster autoscaler decisions
+tc-logview query -e fx-ci --type k8s.autoscaler --since 2h
+
+# CloudSQL errors
+tc-logview query -e fx-ci --type cloudsql.errors --since 2h
+
+# List all available presets
+tc-logview list --service k8s
+```
+
+Available presets:
+
+| Type | Description | Filter fields |
+|---|---|---|
+| `k8s.pod-crash` | Pod crash loops and BackOff events | pod, namespace |
+| `k8s.pod-unhealthy` | Health probe failures | pod, namespace |
+| `k8s.pod-evicted` | Pod evictions | pod, namespace |
+| `k8s.pod-scheduling` | Scheduling failures and preemptions | pod, namespace |
+| `k8s.container-died` | Container died events (includes normal exits) | node, message |
+| `k8s.oom-kill` | OOMKilled containers (node-level) | node, message |
+| `k8s.node-pressure` | Node memory/disk/PID pressure | node, message |
+| `k8s.autoscaler` | Cluster autoscaler scale decisions | — |
+| `k8s.events` | All kubernetes events (catch-all) | pod, namespace, node, reason |
+| `cloudsql.errors` | CloudSQL errors | — |
+| `cloudsql.slow-query` | CloudSQL slow queries | — |
+
 ### Environment selection
 
 Either pass `-e` explicitly or set `TASKCLUSTER_ROOT_URL`:
@@ -173,6 +219,7 @@ tc-logview/
     query.go                  Query logs with filter building + caching
     config_init.go            Generate default config
   internal/
+    presets/presets.go          Curated k8s/CloudSQL query presets
     config/config.go          YAML config parsing, ~ expansion
     cache/cache.go            File cache with MD5 keys and TTL
     references/

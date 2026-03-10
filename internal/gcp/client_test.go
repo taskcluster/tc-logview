@@ -255,3 +255,45 @@ func TestExtractFields_ProtoPayload(t *testing.T) {
 		t.Errorf("workerGroup: got %q", entry.Fields["workerGroup"])
 	}
 }
+
+func TestExtractFieldsWithPaths_ResourceLabels(t *testing.T) {
+	raw := map[string]interface{}{
+		"timestamp": "2026-03-10T11:23:06Z",
+		"resource": map[string]interface{}{
+			"type": "k8s_node",
+			"labels": map[string]interface{}{
+				"node_name": "gke-pool-abc-5fhx",
+			},
+		},
+		"protoPayload": map[string]interface{}{
+			"MESSAGE": `SyncLoop (PLEG): event for pod "taskcluster-queue" event={"Type":"ContainerDied"}`,
+		},
+	}
+	pathMap := map[string]string{
+		"node":    "resource.labels.node_name",
+		"message": "MESSAGE",
+	}
+	entry := ExtractFieldsWithPaths(raw, []string{"node", "message"}, pathMap)
+	if entry.Fields["node"] != "gke-pool-abc-5fhx" {
+		t.Errorf("node: got %q, want %q", entry.Fields["node"], "gke-pool-abc-5fhx")
+	}
+	if entry.Fields["message"] == "" {
+		t.Error("message should not be empty")
+	}
+}
+
+func TestExtractFieldsWithPaths_FallbackToStandard(t *testing.T) {
+	raw := map[string]interface{}{
+		"timestamp": "2026-03-10T12:00:00Z",
+		"jsonPayload": map[string]interface{}{
+			"Fields": map[string]interface{}{
+				"workerId": "w-123",
+			},
+		},
+	}
+	// nil pathMap should fall back to standard ExtractFields behavior
+	entry := ExtractFieldsWithPaths(raw, []string{"workerId"}, nil)
+	if entry.Fields["workerId"] != "w-123" {
+		t.Errorf("workerId: got %q, want %q", entry.Fields["workerId"], "w-123")
+	}
+}
