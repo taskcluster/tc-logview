@@ -44,11 +44,11 @@ environments:
     root_url: "https://firefox-ci-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
   community-tc:
-    project_id: "moz-fx-taskcluster-prod-4b87"
-    cluster: "taskcluster-communitytc-v1"
-    cloudsql_instance: "taskcluster-prod-communitytc-v1"
+    project_id: "moz-fx-webservices-high-prod"
+    cluster: "webservices-high-prod"
     root_url: "https://community-tc.services.mozilla.com"
-    key_path: "~/.config/tc-logview/keys/tc-prod.json"
+    cloudsql_instance: "taskcluster-community-20260317-1"
+    key_path: "~/.config/tc-logview/keys/tc-community.json"
 ```
 
 ### 2. Add GCP credentials

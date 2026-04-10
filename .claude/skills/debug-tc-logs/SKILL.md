@@ -88,6 +88,33 @@ https://<root-url>/api/queue/v1/task/<taskId>/runs/<runId>/artifacts/public/logs
 
 Use `curl -sL` or `WebFetch` to retrieve.
 
+### Worker-Manager API
+
+The `taskcluster` CLI can query worker-manager directly for live worker state:
+
+```bash
+# List workers in a pool with state breakdown
+taskcluster api workerManager listWorkersForWorkerPool <workerPoolId>
+
+# Useful jq patterns:
+# State distribution
+... | jq '[.workers[] | .state] | group_by(.) | map({state: .[0], count: length})'
+
+# Stopping workers that never claimed tasks
+... | jq '{stopping: [.workers[] | select(.state == "stopping")] | length, no_tasks: [.workers[] | select(.state == "stopping" and (.recentTasks | length) == 0)] | length}'
+
+# Age of stopping workers
+... | jq -r '.workers[] | select(.state == "stopping") | [.created[0:16], .workerId] | @tsv' | head -20
+```
+
+### Installing the CLI
+
+If `taskcluster` is not available:
+```bash
+curl -L https://github.com/taskcluster/taskcluster/releases/download/v99.0.3/taskcluster-linux-amd64.tar.gz --output /tmp/taskcluster.tar.gz && tar -xvf /tmp/taskcluster.tar.gz -C /tmp && rm /tmp/taskcluster.tar.gz && chmod +x /tmp/taskcluster
+# Then use as: /tmp/taskcluster ...
+```
+
 ### Auth Note
 
 By default only public API calls work (task status, definitions, public artifacts). If scoped credentials are needed for private artifacts or write operations, use `taskcluster signin -s <scope>`.
@@ -402,6 +429,77 @@ Map user intent to query sequence:
 1. Query worker lifecycle events: `--type worker-stopped --where 'workerPoolId="<POOL>"'`
 2. Check reasons: `--json | jq -r '.reason' | sort | uniq -c`
 3. Check `worker-requested` vs `worker-running` counts to spot provisioning failures
+
+**"Worker scanner is slow" / "Provisioner timing spikes"**
+1. Check scanner/provisioner loop timing:
+   ```bash
+   tc-logview query -e <env> --type monitor.periodic \
+     --filter 'jsonPayload.serviceContext.service="worker-manager"' --since 12h --limit 200
+   ```
+   Look at `workerScannerAzure`, `workerScanner`, `provisioner` entries — duration is in ms, status is `success` or `exception`.
+   6000000ms (6000s) = timeout limit for Azure scanner.
+
+2. Check the stopping/running ratio — **this is the fastest diagnostic signal**:
+   ```bash
+   tc-logview query -e <env> --type simple-estimate --since 6h --limit 200 --json | \
+     jq -r 'select((.stoppingCapacity | tonumber) > 0) | [.timestamp[0:16], .workerPoolId, "existing=" + .existingCapacity, "requested=" + .requestedCapacity, "stopping=" + .stoppingCapacity, "pending=" + .pendingTasks] | @tsv' | sort -t'=' -k4 -rn | head -20
+   ```
+   **A stopping:running ratio > 3:1 means the scanner is drowning in deprovision work.**
+
+3. Check Azure API latency and rate limiting:
+   ```bash
+   # API call metrics per provider (latency, volume, failures)
+   tc-logview query -e <env> --type cloud-api-metrics \
+     --filter 'jsonPayload.Fields.providerId="<PROVIDER>"' --since 12h --limit 100
+
+   # Rate limit pauses
+   tc-logview query -e <env> --type cloud-api-paused --since 30d --limit 100
+   ```
+   Azure API avg latency of 2-3.5s per call is normal. p95 > 10s or max > 30s indicates outlier issues.
+
+4. Check worker-manager errors for the provider:
+   ```bash
+   tc-logview query -e <env> --type monitor.error \
+     --filter 'jsonPayload.serviceContext.service="worker-manager"' --since 4d --limit 200 --json | \
+     jq -r '.message[:80]' | sort | uniq -c | sort -rn
+   ```
+   Common patterns: "Iteration exceeded maximum time allowed" (scanner timeout), "Invalid resource group location" (RG conflicts), "Cannot read properties of undefined" (code bugs), "statement timeout" (DB pressure).
+
+5. Check scan-seen for worker counts per provider:
+   ```bash
+   tc-logview query -e <env> --type scan-seen --since 4d --limit 200 --json | \
+     jq -r 'select(.total != "0" and .total != 0) | [.timestamp[0:16], .providerId, .total] | @tsv'
+   ```
+
+6. Use the `taskcluster` CLI to inspect live worker state distribution:
+   ```bash
+   export TASKCLUSTER_ROOT_URL=https://firefox-ci-tc.services.mozilla.com
+   /tmp/taskcluster api workerManager listWorkersForWorkerPool <POOL_ID> | \
+     jq '[.workers[] | .state] | group_by(.) | map({state: .[0], count: length})'
+   ```
+
+7. Check if stopping workers ever ran tasks (bogus vs real):
+   ```bash
+   /tmp/taskcluster api workerManager listWorkersForWorkerPool <POOL_ID> | \
+     jq '{total_stopping: [.workers[] | select(.state == "stopping")] | length, with_tasks: [.workers[] | select(.state == "stopping" and (.recentTasks | length) > 0)] | length, no_tasks: [.workers[] | select(.state == "stopping" and (.recentTasks | length) == 0)] | length}'
+   ```
+   Note: `recentTasks` may be empty for workers that did run tasks (field isn't always populated). Cross-check by looking for `claimWork` API calls for specific workers.
+
+8. Check if workers are calling shouldWorkerTerminate and claimWork:
+   ```bash
+   tc-logview query -e <env> --type monitor.apiMethod \
+     --filter '"<WORKER_ID>"' --since 12h --limit 100
+   ```
+   Healthy flow: secrets (404 ok) → shouldWorkerTerminate → claimWork → createArtifact.
+   If only secrets + shouldWorkerTerminate with no claimWork: worker is being told to terminate before claiming work.
+
+**Root causes of Azure scanner slowdowns (in order of likelihood):**
+- **Stopping worker backlog**: Each stopping worker needs ~8 Azure API calls (VM, NIC, IP, disks) at 2-3.5s each = ~20s per worker, single-threaded. 1000 stopping workers = ~5.5hrs of API time.
+- **Low idle timeout**: Workers with short `idleTimeoutSecs` (e.g., 150s) die after every task, creating constant churn. Bumping to 900-1800s reduces churn significantly when tasks are always pending.
+- **Azure API outlier latency**: Occasional calls take 20-34s, blocking the single-threaded queue. The `CloudAPI.timeout` of 10min is too generous — 30-60s is sufficient.
+- **Rate limit backoff**: 429 from Azure causes 50s pause (`_backoffDelay * 50`). Check `cloud-api-paused` events.
+- **Resource group ensure race**: Per-pool RGs + concurrent workers = TOCTOU race in `ensureResourceGroup` cache. Multiple workers pass `cache.has()` before any sets it.
+- **`shouldWorkerTerminate` staleness**: Decisions computed at end of scanner run. With 30-60min cycles, workers get told to terminate based on hour-old data.
 
 **"GitHub integrations broken?"**
 1. Check GitHub signature mismatch errors
