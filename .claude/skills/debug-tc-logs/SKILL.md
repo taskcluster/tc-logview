@@ -195,91 +195,35 @@ Include all known constraints via `--where`.
 
 ## 7. Common Query Patterns
 
-### API errors (403/500)
+Basic flag usage examples. For full investigation flows, see the playbooks in section 12.
+
+### Filter by log type and field
 ```bash
 tc-logview query -e <env> --type monitor.apiMethod \
   --where 'statusCode="500"' --since 1h
 ```
-Key fields in output: `method`, `statusCode`, `clientId`, `duration`
 
-For a specific status code and method:
-```bash
-tc-logview query -e <env> --type monitor.apiMethod \
-  --where 'statusCode="403"' --filter 'jsonPayload.Fields.name="claimWork"' --since 2h
-```
-
-### Task claim-expired
+### Use raw filter for fields not covered by --where
 ```bash
 tc-logview query -e <env> --type task-exception \
   --filter 'jsonPayload.Logger="taskcluster.queue.claim-resolver"' --since 1h
 ```
 
-### Task deadline-exceeded
+### Full-text search
 ```bash
-tc-logview query -e <env> --type task-exception \
-  --filter 'jsonPayload.Logger="taskcluster.queue.deadline-resolver"' --since 1h
+tc-logview query -e <env> --filter '"PulsePublisher.sendDeadline exceeded"' --since 1h
 ```
 
-### Pulse publisher deadline
+### Investigate a single task or worker (text match across all fields)
 ```bash
-tc-logview query -e <env> \
-  --filter '"PulsePublisher.sendDeadline exceeded"' --since 1h
+tc-logview query -e <env> --type monitor.apiMethod --filter '"<TASK_ID>"' --since 6h
+tc-logview query -e <env> --type monitor.apiMethod --filter '"<WORKER_ID>"' --since 6h
 ```
 
-### GitHub signature mismatch
+### JSON output for aggregation
 ```bash
-tc-logview query -e <env> --type monitor.error \
-  --filter 'jsonPayload.Fields.message="X-hub-signature does not match"' --since 2h
-```
-
-### Investigate a single task
-```bash
-tc-logview query -e <env> --type monitor.apiMethod \
-  --filter '"<TASK_ID>"' --since 6h
-```
-
-### Investigate a single worker (all API calls)
-```bash
-tc-logview query -e <env> --type monitor.apiMethod \
-  --filter '"<WORKER_ID>"' --since 6h
-```
-
-Faster variant (worker-manager events only):
-```bash
-tc-logview query -e <env> --where 'workerId="<WORKER_ID>"' --since 6h
-```
-
-### Worker pool lifecycle
-```bash
-# All lifecycle events for a pool
-tc-logview query -e <env> --type worker-requested \
-  --where 'workerPoolId="<POOL_ID>"' --since 6h
-
-tc-logview query -e <env> --type worker-stopped \
-  --where 'workerPoolId="<POOL_ID>"' --since 6h
-
-# Or use raw filter to get all lifecycle types in one query
-tc-logview query -e <env> \
-  --filter '(jsonPayload.Type="worker-requested" OR jsonPayload.Type="worker-running" OR jsonPayload.Type="worker-stopped" OR jsonPayload.Type="worker-removed") AND jsonPayload.Fields.workerPoolId="<POOL_ID>"' \
-  --since 6h --json | jq '{type: .jsonPayload.Type, workerId: .workerId, reason: .reason}'
-```
-
-### GitHub service errors
-```bash
-tc-logview query -e <env> --type monitor.error \
-  --filter 'jsonPayload.Logger="taskcluster.github.api"' --since 168h
-```
-
-To identify the repo, correlate with `traceId`:
-```bash
-tc-logview query -e <env> \
-  --filter '"<repo-name>" AND severity="ERROR"' --since 24h
-```
-
-### Simple estimate (capacity planning)
-```bash
-tc-logview query -e <env> --type simple-estimate \
-  --where 'workerPoolId="<POOL_ID>"' --since 2h
+tc-logview query -e <env> --type worker-removed --since 6h --limit 200 --json | \
+  jq -r '.reason' | sort | uniq -c | sort -rn
 ```
 
 ## 8. Infrastructure Log Presets
@@ -364,171 +308,28 @@ Important: `statusCode` is a **string** in the logs — filter with `="403"` not
 
 Use `tc-logview list --service <name>` to see all available fields for each log type.
 
-## 10. Task-Level Debugging Workflow
+## 10. Investigation Playbooks
 
-Step-by-step protocol when given a task ID or task URL:
+Map the user's problem to the right playbook, then read and follow it. Each playbook is a self-contained investigation flow with decision points and concrete commands.
 
-1. **Extract task ID** — parse `tasks/<taskId>` from TC URLs (e.g., `https://firefox-ci-tc.services.mozilla.com/tasks/IKBB-zASS_uNES7KC8MJpg`)
-2. **Get task status** — `taskcluster task status <taskId>` → identify state (`failed`/`exception`/`completed`), number of runs, resolution reason
-3. **Get task definition** — `taskcluster task def <taskId>` → extract `workerPoolId`, `taskQueueId`, `metadata.name`
-4. **Fetch task log** — `taskcluster task log <taskId>` → search for error patterns (broken pipe, OOM, timeout, exit codes)
-5. **Identify worker** — from task status runs, extract `workerId` and `workerGroup`
-6. **Cross-reference with TC service logs** — use `tc-logview query` filtered by taskId or workerId (see Common Query Patterns)
+| Problem area | Playbook |
+|---|---|
+| Task failure (given a task ID/URL) | `examples/task-failure-debugging.md` |
+| Workers disappearing, removed, zombie | `examples/worker-removal-reasons.md` |
+| Azure provider, ARM deployments, scanner slow, throttling | `examples/azure-provider-debugging.md` |
+| Queue health, claim-expired, deadlines, pulse | `examples/queue-health-investigation.md` |
+| GitHub integrations, webhooks, handler errors | `examples/github-service-debugging.md` |
+| HTTP 502s, load balancer errors | `examples/http-502-investigation.md` |
+| Service pods crashing, k8s/infra, database | `examples/infra-debugging.md` |
 
-## 11. Common Task Failure Patterns
+**Quick dispatch hints:**
+- Given a task ID/URL → `task-failure-debugging.md`
+- "Are there 500s?" / API errors → start with `--type monitor.apiMethod --where 'statusCode="500"'`, then follow the relevant playbook based on which service is erroring
+- "What's broken?" (broad) → run the health summary script first (section 0), then follow the playbook matching the area with the most errors
+- Worker pool slow/broken → `worker-removal-reasons.md` for removal patterns, `azure-provider-debugging.md` for provisioning/scanner issues
+- Check worker X / worker stuck → `task-failure-debugging.md` section 4a-4b covers worker API call investigation
 
-| Pattern | Log Signature | Next Step |
-|---|---|---|
-| Broken pipe | `write \|1\|: broken pipe` in task log | Check worker for preemption/network issues |
-| Livelog port conflict | `listen tcp :60098: bind: address already in use` in worker log | Usually non-fatal, check if task continued |
-| Claim expired | Task state `exception`, reason `claim-expired` | Check worker API calls via tc-logview |
-| Deadline exceeded | Task state `exception`, reason `deadline-exceeded` | Check if task was actually running or stuck |
-| Docker container crash | Container exited non-zero, veth interface down | Check task log for OOM or command failure |
-| GCP preemption | `google_guest_agent ERROR metadata.go: Error watching metadata: context canceled` | Check GCP audit logs for instance lifecycle |
-| Worker idle shutdown | Worker hits idle timeout after task failure | Not a root cause — look earlier in timeline |
-
-## 12. Debugging Decision Tree
-
-Map user intent to query sequence:
-
-**"Given a TC task URL"**
-1. Parse taskId from URL (extract `tasks/<taskId>` segment)
-2. Determine environment from the root URL (see Environment Resolution)
-3. Follow "Why did task X fail?" flow below
-
-**"Why did task X fail?"**
-1. `taskcluster task status <taskId>` → check state and resolution reason
-2. `taskcluster task log <taskId>` → search for error patterns in output
-3. If `claim-expired` → extract workerId from status runs → query GCP logs for worker's API calls
-4. If `deadline-exceeded` → check if task was actually running or stuck in queue
-5. If `failed` → check task log for exit codes, broken pipe, OOM, or command errors
-6. If infrastructure suspicion → note: check Papertrail/audit logs manually (future automation)
-
-**"Task has broken pipe / unexpected termination"**
-1. Get task log, confirm the error pattern
-2. Get workerId from task status
-3. Query GCP logs by workerId to check if other tasks on the same worker also failed
-4. If only this task failed: likely a transient issue. If multiple tasks failed: worker-level problem
-
-**"Check worker X" / "Worker seems stuck"**
-1. Investigate single worker (all API calls by worker)
-2. Look for pattern: only `claimWork` calls = worker is claiming but tasks keep expiring
-3. Check if worker appears in claim-expired results
-
-**"Are there 500s?" / "API errors?"**
-1. Query 500 API calls with `--type monitor.apiMethod --where 'statusCode="500"'`
-2. Group by method: `--json | jq -r '.name' | sort | uniq -c | sort -rn`
-3. Check for Pulse publisher deadline errors (common root cause of 500s)
-
-**"Is the queue healthy?"**
-1. Count claim-expired tasks: `--type task-exception --filter 'jsonPayload.Logger="taskcluster.queue.claim-resolver"'`
-2. Count deadline-exceeded tasks: `--type task-exception --filter 'jsonPayload.Logger="taskcluster.queue.deadline-resolver"'`
-3. If counts are high, group by task queue with `--json | jq -r '.taskQueueId' | sort | uniq -c`
-
-**"Worker pool X is slow/broken"**
-1. Query worker lifecycle events: `--type worker-stopped --where 'workerPoolId="<POOL>"'`
-2. Check reasons: `--json | jq -r '.reason' | sort | uniq -c`
-3. Check `worker-requested` vs `worker-running` counts to spot provisioning failures
-
-**"Worker scanner is slow" / "Provisioner timing spikes"**
-1. Check scanner/provisioner loop timing:
-   ```bash
-   tc-logview query -e <env> --type monitor.periodic \
-     --filter 'jsonPayload.serviceContext.service="worker-manager"' --since 12h --limit 200
-   ```
-   Look at `workerScannerAzure`, `workerScanner`, `provisioner` entries — duration is in ms, status is `success` or `exception`.
-   6000000ms (6000s) = timeout limit for Azure scanner.
-
-2. Check the stopping/running ratio — **this is the fastest diagnostic signal**:
-   ```bash
-   tc-logview query -e <env> --type simple-estimate --since 6h --limit 200 --json | \
-     jq -r 'select((.stoppingCapacity | tonumber) > 0) | [.timestamp[0:16], .workerPoolId, "existing=" + .existingCapacity, "requested=" + .requestedCapacity, "stopping=" + .stoppingCapacity, "pending=" + .pendingTasks] | @tsv' | sort -t'=' -k4 -rn | head -20
-   ```
-   **A stopping:running ratio > 3:1 means the scanner is drowning in deprovision work.**
-
-3. Check Azure API latency and rate limiting:
-   ```bash
-   # API call metrics per provider (latency, volume, failures)
-   tc-logview query -e <env> --type cloud-api-metrics \
-     --filter 'jsonPayload.Fields.providerId="<PROVIDER>"' --since 12h --limit 100
-
-   # Rate limit pauses
-   tc-logview query -e <env> --type cloud-api-paused --since 30d --limit 100
-   ```
-   Azure API avg latency of 2-3.5s per call is normal. p95 > 10s or max > 30s indicates outlier issues.
-
-4. Check worker-manager errors for the provider:
-   ```bash
-   tc-logview query -e <env> --type monitor.error \
-     --filter 'jsonPayload.serviceContext.service="worker-manager"' --since 4d --limit 200 --json | \
-     jq -r '.message[:80]' | sort | uniq -c | sort -rn
-   ```
-   Common patterns: "Iteration exceeded maximum time allowed" (scanner timeout), "Invalid resource group location" (RG conflicts), "Cannot read properties of undefined" (code bugs), "statement timeout" (DB pressure).
-
-5. Check scan-seen for worker counts per provider:
-   ```bash
-   tc-logview query -e <env> --type scan-seen --since 4d --limit 200 --json | \
-     jq -r 'select(.total != "0" and .total != 0) | [.timestamp[0:16], .providerId, .total] | @tsv'
-   ```
-
-6. Use the `taskcluster` CLI to inspect live worker state distribution:
-   ```bash
-   export TASKCLUSTER_ROOT_URL=https://firefox-ci-tc.services.mozilla.com
-   /tmp/taskcluster api workerManager listWorkersForWorkerPool <POOL_ID> | \
-     jq '[.workers[] | .state] | group_by(.) | map({state: .[0], count: length})'
-   ```
-
-7. Check if stopping workers ever ran tasks (bogus vs real):
-   ```bash
-   /tmp/taskcluster api workerManager listWorkersForWorkerPool <POOL_ID> | \
-     jq '{total_stopping: [.workers[] | select(.state == "stopping")] | length, with_tasks: [.workers[] | select(.state == "stopping" and (.recentTasks | length) > 0)] | length, no_tasks: [.workers[] | select(.state == "stopping" and (.recentTasks | length) == 0)] | length}'
-   ```
-   Note: `recentTasks` may be empty for workers that did run tasks (field isn't always populated). Cross-check by looking for `claimWork` API calls for specific workers.
-
-8. Check if workers are calling shouldWorkerTerminate and claimWork:
-   ```bash
-   tc-logview query -e <env> --type monitor.apiMethod \
-     --filter '"<WORKER_ID>"' --since 12h --limit 100
-   ```
-   Healthy flow: secrets (404 ok) → shouldWorkerTerminate → claimWork → createArtifact.
-   If only secrets + shouldWorkerTerminate with no claimWork: worker is being told to terminate before claiming work.
-
-**Root causes of Azure scanner slowdowns (in order of likelihood):**
-- **Stopping worker backlog**: Each stopping worker needs ~8 Azure API calls (VM, NIC, IP, disks) at 2-3.5s each = ~20s per worker, single-threaded. 1000 stopping workers = ~5.5hrs of API time.
-- **Low idle timeout**: Workers with short `idleTimeoutSecs` (e.g., 150s) die after every task, creating constant churn. Bumping to 900-1800s reduces churn significantly when tasks are always pending.
-- **Azure API outlier latency**: Occasional calls take 20-34s, blocking the single-threaded queue. The `CloudAPI.timeout` of 10min is too generous — 30-60s is sufficient.
-- **Rate limit backoff**: 429 from Azure causes 50s pause (`_backoffDelay * 50`). Check `cloud-api-paused` events.
-- **Resource group ensure race**: Per-pool RGs + concurrent workers = TOCTOU race in `ensureResourceGroup` cache. Multiple workers pass `cache.has()` before any sets it.
-- **`shouldWorkerTerminate` staleness**: Decisions computed at end of scanner run. With 30-60min cycles, workers get told to terminate based on hour-old data.
-
-**"GitHub integrations broken?"**
-1. Check GitHub signature mismatch errors
-2. Check 500s filtered to github-related API methods
-
-**"GitHub service failing to process .taskcluster.yml / JSON-e template errors?"**
-1. Check github api errors: `--type monitor.error --filter 'jsonPayload.Logger="taskcluster.github.api"' --since 168h`
-2. Errors surface as `monitor.error` with `jsonPayload.Fields.badMessage` containing the JSON-e error (e.g. `InterpreterError`, `TemplateError`)
-3. To find which repo triggered the error, use the `traceId` from the error entry to correlate with other log entries in the same request — but note: `owner`/`repoName` fields may be null on error entries
-4. To identify the repo from a webhook event, search for `"<repo-name>"` as a text filter and look at debug-level `Github webhook payload` entries
-5. Note: PR/push processing is async — the webhook handler returns 200 immediately, then the handlers process the queued message; template errors may appear in the api logger (for direct preview calls) or not surface at all if the handlers swallow them
-6. `issue_comment` webhooks containing the template text will match broad text searches for variable names — filter with `--filter 'severity="ERROR"'` to avoid false positives
-
-**"Service pod keeps restarting / not starting"**
-1. Check for crash loops: `--type k8s.pod-crash --where 'namespace="taskcluster"' --since 2h`
-2. Check for OOM kills: `--type k8s.oom-kill --since 2h`
-3. Check for health probe failures: `--type k8s.pod-unhealthy --where 'namespace="taskcluster"' --since 2h`
-4. Check all events for the specific pod: `--type k8s.events --where 'pod="<pod-name>"' --since 2h`
-
-**"Cluster scaling issues / pods pending"**
-1. Check scheduling failures: `--type k8s.pod-scheduling --since 2h`
-2. Check autoscaler decisions: `--type k8s.autoscaler --since 2h`
-3. Check node pressure: `--type k8s.node-pressure --since 2h`
-
-**"Database connection issues"**
-1. Check CloudSQL errors: `--type cloudsql.errors --since 2h`
-2. Check for slow queries: `--type cloudsql.slow-query --since 2h`
-
-## 13. Auth Setup
+## 11. Auth Setup
 
 When key files are missing, guide the user through setup. Keys go in `~/.config/tc-logview/keys/` (update `key_path` in `~/.config/tc-logview/config.yaml` to match).
 
@@ -581,7 +382,7 @@ gcloud iam service-accounts keys create ~/.config/tc-logview/keys/tc-dev.json \
 
 After placing the key, update `~/.config/tc-logview/config.yaml` with the correct `key_path` for that environment, then run `tc-logview sync`.
 
-## 14. Anti-Patterns
+## 12. Anti-Patterns
 
 - **Never** run a query without `--limit`
 - **Never** start with `--since 30d` — always start narrow (`--since 1h`) and widen
@@ -591,7 +392,7 @@ After placing the key, update `~/.config/tc-logview/config.yaml` with the correc
 - **Never** use `--limit` greater than 500
 - **Prefer** `--type` + `--where` over raw `--filter` — the tool validates field names and auto-narrows the service scope
 
-## 15. Current Limitations
+## 13. Current Limitations
 
 - **Worker system logs (Papertrail)**: Not yet automated — when worker-level logs are needed, tell the user to check Papertrail manually with the worker hostname
 - **GCP Audit Logs for VM lifecycle**: Worker VMs may run in different GCP projects depending on the pool/provider; infra-level debugging requires knowing which project, which varies by environment and pool configuration
