@@ -35,6 +35,13 @@ var configInitCmd = &cobra.Command{
 		}
 
 		example := `# tc-logview configuration
+#
+# Authentication:
+#   - Set ` + "`key_path`" + ` to use a service account JSON key
+#     (intended for untrusted/containerized environments).
+#   - Omit ` + "`key_path`" + ` to use Application Default Credentials
+#     (run ` + "`gcloud auth application-default login`" + ` once on your machine).
+#
 # Place service account keys in ~/.config/tc-logview/keys/
 
 environments:
@@ -55,7 +62,7 @@ environments:
     root_url: "https://community-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
   staging:
-    project_id: "moz-fx-webservices-high-nonprod"
+    project_id: "moz-fx-webservices-high-nonpro"
     cluster: "webservices-high-nonprod"
     namespace: "taskcluster-stage"
     root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
@@ -64,7 +71,7 @@ environments:
     project_id: "taskcluster-dev"
     cluster: "taskcluster-dev"
     root_url: "https://tc.dev.taskcluster.mozgcp.net"
-    key_path: "~/.config/tc-logview/keys/tc-dev.json"
+    # key_path omitted — uses ADC by default
 `
 		if err := os.WriteFile(cfgPath, []byte(example), 0o644); err != nil {
 			return fmt.Errorf("writing config: %w", err)
@@ -73,7 +80,9 @@ environments:
 		fmt.Fprintf(cmd.OutOrStdout(), "Config created at %s\n", cfgPath)
 		fmt.Fprintf(cmd.OutOrStdout(), "Keys directory: %s\n", keysDir)
 		fmt.Fprintln(cmd.OutOrStdout(), "\nNext steps:")
-		fmt.Fprintln(cmd.OutOrStdout(), "  1. Place your GCP service account key(s) in the keys directory")
+		fmt.Fprintln(cmd.OutOrStdout(), "  1. Authentication — choose one per environment:")
+		fmt.Fprintln(cmd.OutOrStdout(), "     a) Place a GCP service account JSON key in the keys directory and reference it via key_path")
+		fmt.Fprintln(cmd.OutOrStdout(), "     b) Or run `gcloud auth application-default login` and omit key_path (ADC)")
 		fmt.Fprintln(cmd.OutOrStdout(), "  2. Edit the config to match your environments")
 		fmt.Fprintln(cmd.OutOrStdout(), "  3. Run 'tc-logview sync' to fetch log type references")
 		return nil

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/taskcluster/tc-logview/internal/config"
 	"github.com/spf13/cobra"
@@ -39,6 +40,35 @@ func logInfo(format string, args ...any) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, format+"\n", args...)
 	}
+}
+
+// authModeMessage returns a human-readable description of which auth mode
+// the gcp client will use for the given project. Intended for stderr
+// diagnostics under -v.
+func authModeMessage(projectID, keyPath string) string {
+	if keyPath == "" {
+		return fmt.Sprintf(
+			"auth: no key_path configured, using application default credentials (project=%s)",
+			projectID,
+		)
+	}
+	return fmt.Sprintf(
+		"auth: using service account key file (project=%s, path=%s)",
+		projectID, keyPath,
+	)
+}
+
+// adcHintIfMissing returns a one-line hint when a GCP client-create error
+// indicates that Application Default Credentials are not configured AND
+// the user has no key_path set. Empty string in any other case.
+func adcHintIfMissing(err error, keyPath string) string {
+	if err == nil || keyPath != "" {
+		return ""
+	}
+	if !strings.Contains(err.Error(), "could not find default credentials") {
+		return ""
+	}
+	return "hint: run `gcloud auth application-default login`, or set `key_path` in ~/.config/tc-logview/config.yaml"
 }
 
 func Execute() error {

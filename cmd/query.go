@@ -157,8 +157,12 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			if skipCluster {
 				projectID = env.CloudSQLProject()
 			}
+			logInfo("%s", authModeMessage(projectID, env.KeyPath))
 			client, err := gcp.NewClient(ctx, projectID, env.KeyPath)
 			if err != nil {
+				if hint := adcHintIfMissing(err, env.KeyPath); hint != "" {
+					return fmt.Errorf("creating GCP client: %w\n%s", err, hint)
+				}
 				return fmt.Errorf("creating GCP client: %w", err)
 			}
 			defer client.Close()
@@ -300,8 +304,12 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	// Query GCP if not cached
 	if rawEntries == nil {
 		ctx := context.Background()
+		logInfo("%s", authModeMessage(env.ProjectID, env.KeyPath))
 		client, err := gcp.NewClient(ctx, env.ProjectID, env.KeyPath)
 		if err != nil {
+			if hint := adcHintIfMissing(err, env.KeyPath); hint != "" {
+				return fmt.Errorf("creating GCP client: %w\n%s", err, hint)
+			}
 			return fmt.Errorf("creating GCP client: %w", err)
 		}
 		defer client.Close()

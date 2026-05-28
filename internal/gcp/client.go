@@ -30,17 +30,32 @@ type QueryResult struct {
 	Total   int
 }
 
-// NewClient creates a new GCP logging client authenticated with the given
-// credentials file.
+// NewClient creates a new GCP logging client. When keyPath is non-empty,
+// authenticates with the file at keyPath. When empty, falls back to
+// Application Default Credentials (the SDK's default credential chain).
 func NewClient(ctx context.Context, projectID, keyPath string) (*Client, error) {
-	adminClient, err := logadmin.NewClient(ctx, projectID, option.WithCredentialsFile(keyPath))
+	var opts []option.ClientOption
+	if keyPath != "" {
+		opts = append(opts, option.WithCredentialsFile(keyPath))
+	}
+	adminClient, err := logadmin.NewClient(ctx, projectID, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create logadmin client: %w", err)
+		return nil, fmt.Errorf("failed to create logadmin client (project=%s, auth=%s): %w",
+			projectID, authModeLabel(keyPath), err)
 	}
 	return &Client{
 		project:     projectID,
 		adminClient: adminClient,
 	}, nil
+}
+
+// authModeLabel reports the auth mode tag used in error messages.
+// Empty keyPath means Application Default Credentials.
+func authModeLabel(keyPath string) string {
+	if keyPath == "" {
+		return "ADC"
+	}
+	return "key_file"
 }
 
 // Query executes a GCP Cloud Logging filter query and returns up to limit

@@ -134,3 +134,31 @@ func TestExpandHome(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadFromMissingKeyPath(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+
+	content := `environments:
+  dev:
+    project_id: "dev-project"
+    cluster: "dev-cluster"
+    root_url: "https://dev.example.com"
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadFrom(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+
+	dev, ok := cfg.Environments["dev"]
+	if !ok {
+		t.Fatalf("expected dev environment to be loaded")
+	}
+	if dev.KeyPath != "" {
+		t.Errorf("expected empty key_path when omitted, got %q", dev.KeyPath)
+	}
+}

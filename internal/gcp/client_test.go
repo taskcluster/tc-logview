@@ -282,6 +282,25 @@ func TestExtractFieldsWithPaths_ResourceLabels(t *testing.T) {
 	}
 }
 
+func TestAuthModeLabel(t *testing.T) {
+	tests := []struct {
+		name    string
+		keyPath string
+		want    string
+	}{
+		{"empty key_path -> ADC", "", "ADC"},
+		{"non-empty key_path -> key_file", "/etc/keys/x.json", "key_file"},
+		{"whitespace is treated as set (not trimmed)", " ", "key_file"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := authModeLabel(tt.keyPath); got != tt.want {
+				t.Errorf("authModeLabel(%q) = %q, want %q", tt.keyPath, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestExtractFieldsWithPaths_FallbackToStandard(t *testing.T) {
 	raw := map[string]interface{}{
 		"timestamp": "2026-03-10T12:00:00Z",

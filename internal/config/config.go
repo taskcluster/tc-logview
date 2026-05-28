@@ -15,7 +15,7 @@ type Environment struct {
 	Cluster          string `yaml:"cluster"`
 	Namespace        string `yaml:"namespace,omitempty"`
 	RootURL          string `yaml:"root_url"`
-	KeyPath          string `yaml:"key_path"`
+	KeyPath          string `yaml:"key_path,omitempty"`
 	CloudSQLInstance string `yaml:"cloudsql_instance,omitempty"`
 }
 

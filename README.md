@@ -54,7 +54,7 @@ environments:
     root_url: "https://community-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
   staging:
-    project_id: "moz-fx-webservices-high-nonprod"
+    project_id: "moz-fx-webservices-high-nonpro"
     cluster: "webservices-high-nonprod"
     namespace: "taskcluster-stage"
     root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
@@ -63,12 +63,28 @@ environments:
     project_id: "taskcluster-dev"
     cluster: "taskcluster-dev"
     root_url: "https://tc.dev.taskcluster.mozgcp.net"
-    key_path: "~/.config/tc-logview/keys/tc-dev.json"
+    # key_path omitted — uses ADC by default
 ```
 
-### 2. Add GCP credentials
+### 2. Authenticate to GCP
 
-Place your service account JSON key in `~/.config/tc-logview/keys/` and update the `key_path` in config.
+Choose one of the two options below per environment. In the example config above, `fx-ci`, `community-tc`, and `staging` use service account keys (Option B); `dev` uses ADC (Option A).
+
+#### Option A — Application Default Credentials (recommended for local use)
+
+Run once on your machine:
+
+```bash
+gcloud auth application-default login
+```
+
+Then **omit `key_path`** for any environment that should use ADC. tc-logview will fall back to the GCP SDK's default credential chain.
+
+#### Option B — Service account key file (for containers / shared infra)
+
+Place your service account JSON key in `~/.config/tc-logview/keys/` and set `key_path` for that environment. The service account only needs `roles/logging.viewer` — CloudSQL logs are read through Cloud Logging too, so no additional roles are required.
+
+This mode is what you want inside an untrusted/containerized environment where you do not want to share your personal `gcloud` session.
 
 ### 3. Sync references
 
