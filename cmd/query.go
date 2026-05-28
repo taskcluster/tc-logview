@@ -101,12 +101,17 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			if env.CloudSQLInstance == "" {
 				return fmt.Errorf("preset %q requires cloudsql_instance in env config (e.g. cloudsql_instance: \"taskcluster-prod-firefoxcitc-v1\")", preset.Name)
 			}
-			databaseID := env.ProjectID + ":" + env.CloudSQLInstance
+			databaseID := env.CloudSQLProject() + ":" + env.CloudSQLInstance
 			presetFilter = fmt.Sprintf("resource.labels.database_id=%q AND %s", databaseID, preset.Filter)
 			skipCluster = true
 		}
+		presetNamespace := ""
+		if preset.NamespaceScope {
+			presetNamespace = env.Namespace
+		}
 		filterStr, err := filter.Build(filter.Params{
 			Cluster:      env.Cluster,
+			Namespace:    presetNamespace,
 			SkipCluster:  skipCluster,
 			PresetFilter: presetFilter,
 			Where:        queryWhere,
@@ -148,7 +153,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 		if rawEntries == nil {
 			ctx := context.Background()
-			client, err := gcp.NewClient(ctx, env.ProjectID, env.KeyPath)
+			projectID := env.ProjectID
+			if skipCluster {
+				projectID = env.CloudSQLProject()
+			}
+			client, err := gcp.NewClient(ctx, projectID, env.KeyPath)
 			if err != nil {
 				return fmt.Errorf("creating GCP client: %w", err)
 			}
@@ -253,6 +262,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	// Build filter
 	filterStr, err := filter.Build(filter.Params{
 		Cluster:    env.Cluster,
+		Namespace:  env.Namespace,
 		LogTypes:   types,
 		Service:    service,
 		Where:      queryWhere,

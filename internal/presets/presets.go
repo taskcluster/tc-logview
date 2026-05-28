@@ -13,6 +13,7 @@ type Preset struct {
 	Filter           string            // GCP filter fragment (no cluster/time)
 	Fields           map[string]string // shorthand → GCP path for --where
 	MessageTransform func(string) string // optional post-processor for the message field
+	NamespaceScope   bool              // true if the resource type carries namespace_name (k8s_pod only)
 }
 
 // FieldNames returns sorted field shorthand names for this preset.
@@ -120,32 +121,36 @@ var All = []Preset{
 		Fields:      nodeFields,
 	},
 	{
-		Name:        "k8s.pod-crash",
-		Service:     "k8s",
-		Description: "Pod crash loops and BackOff events",
-		Filter:      `resource.type="k8s_pod" log_id("events") (jsonPayload.reason="BackOff" OR jsonPayload.reason="CrashLoopBackOff")`,
-		Fields:      podFields,
+		Name:           "k8s.pod-crash",
+		Service:        "k8s",
+		Description:    "Pod crash loops and BackOff events",
+		Filter:         `resource.type="k8s_pod" log_id("events") (jsonPayload.reason="BackOff" OR jsonPayload.reason="CrashLoopBackOff")`,
+		Fields:         podFields,
+		NamespaceScope: true,
 	},
 	{
-		Name:        "k8s.pod-evicted",
-		Service:     "k8s",
-		Description: "Pod evictions",
-		Filter:      `resource.type="k8s_pod" log_id("events") jsonPayload.reason="Evicted"`,
-		Fields:      podFields,
+		Name:           "k8s.pod-evicted",
+		Service:        "k8s",
+		Description:    "Pod evictions",
+		Filter:         `resource.type="k8s_pod" log_id("events") jsonPayload.reason="Evicted"`,
+		Fields:         podFields,
+		NamespaceScope: true,
 	},
 	{
-		Name:        "k8s.pod-scheduling",
-		Service:     "k8s",
-		Description: "Scheduling failures and preemptions",
-		Filter:      `resource.type="k8s_pod" log_id("events") (jsonPayload.reason="FailedScheduling" OR jsonPayload.reason="Preempted")`,
-		Fields:      podFields,
+		Name:           "k8s.pod-scheduling",
+		Service:        "k8s",
+		Description:    "Scheduling failures and preemptions",
+		Filter:         `resource.type="k8s_pod" log_id("events") (jsonPayload.reason="FailedScheduling" OR jsonPayload.reason="Preempted")`,
+		Fields:         podFields,
+		NamespaceScope: true,
 	},
 	{
-		Name:        "k8s.pod-unhealthy",
-		Service:     "k8s",
-		Description: "Health probe failures",
-		Filter:      `resource.type="k8s_pod" log_id("events") (jsonPayload.reason="Unhealthy" OR jsonPayload.reason="ProbeError")`,
-		Fields:      podFields,
+		Name:           "k8s.pod-unhealthy",
+		Service:        "k8s",
+		Description:    "Health probe failures",
+		Filter:         `resource.type="k8s_pod" log_id("events") (jsonPayload.reason="Unhealthy" OR jsonPayload.reason="ProbeError")`,
+		Fields:         podFields,
+		NamespaceScope: true,
 	},
 }
 

@@ -5,17 +5,27 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Environment struct {
-	ProjectID       string `yaml:"project_id"`
-	Cluster         string `yaml:"cluster"`
-	RootURL         string `yaml:"root_url"`
-	KeyPath         string `yaml:"key_path"`
+	ProjectID        string `yaml:"project_id"`
+	CloudSQLProjectID string `yaml:"cloudsql_project_id,omitempty"`
+	Cluster          string `yaml:"cluster"`
+	Namespace        string `yaml:"namespace,omitempty"`
+	RootURL          string `yaml:"root_url"`
+	KeyPath          string `yaml:"key_path"`
 	CloudSQLInstance string `yaml:"cloudsql_instance,omitempty"`
+}
+
+// CloudSQLProject returns the GCP project that holds the CloudSQL instance.
+// Falls back to ProjectID when CloudSQLProjectID is not set.
+func (e Environment) CloudSQLProject() string {
+	if e.CloudSQLProjectID != "" {
+		return e.CloudSQLProjectID
+	}
+	return e.ProjectID
 }
 
 type Config struct {
@@ -54,9 +64,6 @@ func LoadFrom(path string) (*Config, error) {
 	}
 	for name, env := range cfg.Environments {
 		env.KeyPath = expandHome(env.KeyPath)
-		if env.CloudSQLInstance == "" {
-			env.CloudSQLInstance = deriveCloudSQLInstance(env.Cluster)
-		}
 		cfg.Environments[name] = env
 	}
 	return &cfg, nil
@@ -82,18 +89,6 @@ func (c *Config) UniqueRootURLs() []string {
 	}
 	sort.Strings(urls)
 	return urls
-}
-
-// deriveCloudSQLInstance infers a CloudSQL instance name from the k8s cluster
-// name by inserting "-prod-" after the "taskcluster-" prefix.
-// e.g. "taskcluster-firefoxcitc-v1" → "taskcluster-prod-firefoxcitc-v1"
-// Returns "" if the cluster name doesn't match the expected pattern.
-func deriveCloudSQLInstance(cluster string) string {
-	const prefix = "taskcluster-"
-	if strings.HasPrefix(cluster, prefix) {
-		return "taskcluster-prod-" + cluster[len(prefix):]
-	}
-	return ""
 }
 
 func expandHome(path string) string {

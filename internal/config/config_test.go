@@ -98,61 +98,21 @@ func TestUniqueRootURLs(t *testing.T) {
 	}
 }
 
-func TestDeriveCloudSQLInstance(t *testing.T) {
+func TestCloudSQLProject(t *testing.T) {
 	tests := []struct {
-		cluster string
-		want    string
+		name              string
+		projectID         string
+		cloudsqlProjectID string
+		want              string
 	}{
-		{"taskcluster-firefoxcitc-v1", "taskcluster-prod-firefoxcitc-v1"},
-		{"taskcluster-communitytc-v1", "taskcluster-prod-communitytc-v1"},
-		{"other-cluster", ""},
-		{"", ""},
+		{"explicit cloudsql_project_id", "gke-project", "sql-project", "sql-project"},
+		{"fallback to project_id", "gke-project", "", "gke-project"},
 	}
 	for _, tt := range tests {
-		got := deriveCloudSQLInstance(tt.cluster)
-		if got != tt.want {
-			t.Errorf("deriveCloudSQLInstance(%q) = %q, want %q", tt.cluster, got, tt.want)
+		e := Environment{ProjectID: tt.projectID, CloudSQLProjectID: tt.cloudsqlProjectID}
+		if got := e.CloudSQLProject(); got != tt.want {
+			t.Errorf("%s: CloudSQLProject() = %q, want %q", tt.name, got, tt.want)
 		}
-	}
-}
-
-func TestLoadFrom_CloudSQLMigration(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "config.yaml")
-
-	// Config without cloudsql_instance — should be derived from cluster
-	content := `environments:
-  fx-ci:
-    project_id: "moz-fx-taskcluster-prod-4b87"
-    cluster: "taskcluster-firefoxcitc-v1"
-    root_url: "https://firefox-ci-tc.services.mozilla.com"
-    key_path: "/keys/tc-prod.json"
-  community-tc:
-    project_id: "moz-fx-taskcluster-prod-4b87"
-    cluster: "taskcluster-communitytc-v1"
-    cloudsql_instance: "custom-instance"
-    root_url: "https://community-tc.services.mozilla.com"
-    key_path: "/keys/tc-prod.json"
-`
-	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := LoadFrom(cfgPath)
-	if err != nil {
-		t.Fatalf("LoadFrom: %v", err)
-	}
-
-	// fx-ci has no cloudsql_instance — should be derived
-	fxci := cfg.Environments["fx-ci"]
-	if fxci.CloudSQLInstance != "taskcluster-prod-firefoxcitc-v1" {
-		t.Errorf("fx-ci: expected derived CloudSQLInstance, got %q", fxci.CloudSQLInstance)
-	}
-
-	// community-tc has explicit cloudsql_instance — should not be overwritten
-	comm := cfg.Environments["community-tc"]
-	if comm.CloudSQLInstance != "custom-instance" {
-		t.Errorf("community-tc: explicit CloudSQLInstance should be preserved, got %q", comm.CloudSQLInstance)
 	}
 }
 

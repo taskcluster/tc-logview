@@ -39,17 +39,32 @@ var configInitCmd = &cobra.Command{
 
 environments:
   fx-ci:
-    project_id: "moz-fx-taskcluster-prod-4b87"
-    cluster: "taskcluster-firefoxcitc-v1"
-    cloudsql_instance: "taskcluster-prod-firefoxcitc-v1"
+    project_id: "moz-fx-webservices-high-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-prod"
+    cloudsql_project_id: "moz-fx-taskcluster-prod"
+    cloudsql_instance: "taskcluster-prod-20260409-1"
     root_url: "https://firefox-ci-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
   community-tc:
-    project_id: "moz-fx-taskcluster-prod-4b87"
-    cluster: "taskcluster-communitytc-v1"
-    cloudsql_instance: "taskcluster-prod-communitytc-v1"
+    project_id: "moz-fx-webservices-high-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-communitytc"
+    cloudsql_project_id: "moz-fx-taskcluster-prod"
+    cloudsql_instance: "taskcluster-community-20260317-1"
     root_url: "https://community-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
+  staging:
+    project_id: "moz-fx-webservices-high-nonprod"
+    cluster: "webservices-high-nonprod"
+    namespace: "taskcluster-stage"
+    root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
+    key_path: "~/.config/tc-logview/keys/tc-staging.json"
+  dev:
+    project_id: "taskcluster-dev"
+    cluster: "taskcluster-dev"
+    root_url: "https://tc.dev.taskcluster.mozgcp.net"
+    key_path: "~/.config/tc-logview/keys/tc-dev.json"
 `
 		if err := os.WriteFile(cfgPath, []byte(example), 0o644); err != nil {
 			return fmt.Errorf("writing config: %w", err)

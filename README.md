@@ -38,17 +38,32 @@ This creates `~/.config/tc-logview/config.yaml`:
 ```yaml
 environments:
   fx-ci:
-    project_id: "moz-fx-taskcluster-prod-4b87"
-    cluster: "taskcluster-firefoxcitc-v1"
-    cloudsql_instance: "taskcluster-prod-firefoxcitc-v1"
+    project_id: "moz-fx-webservices-high-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-prod"
+    cloudsql_project_id: "moz-fx-taskcluster-prod"
+    cloudsql_instance: "taskcluster-prod-20260409-1"
     root_url: "https://firefox-ci-tc.services.mozilla.com"
     key_path: "~/.config/tc-logview/keys/tc-prod.json"
   community-tc:
     project_id: "moz-fx-webservices-high-prod"
     cluster: "webservices-high-prod"
-    root_url: "https://community-tc.services.mozilla.com"
+    namespace: "taskcluster-communitytc"
+    cloudsql_project_id: "moz-fx-taskcluster-prod"
     cloudsql_instance: "taskcluster-community-20260317-1"
-    key_path: "~/.config/tc-logview/keys/tc-community.json"
+    root_url: "https://community-tc.services.mozilla.com"
+    key_path: "~/.config/tc-logview/keys/tc-prod.json"
+  staging:
+    project_id: "moz-fx-webservices-high-nonprod"
+    cluster: "webservices-high-nonprod"
+    namespace: "taskcluster-stage"
+    root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
+    key_path: "~/.config/tc-logview/keys/tc-staging.json"
+  dev:
+    project_id: "taskcluster-dev"
+    cluster: "taskcluster-dev"
+    root_url: "https://tc.dev.taskcluster.mozgcp.net"
+    key_path: "~/.config/tc-logview/keys/tc-dev.json"
 ```
 
 ### 2. Add GCP credentials
@@ -200,7 +215,7 @@ tc-logview query --type worker-stopped
 
 The tool builds GCP filters from three layers:
 
-1. **Scope** — `resource.labels.cluster_name` (from environment config)
+1. **Scope** — `resource.labels.cluster_name` (from environment config); `resource.labels.namespace_name` when `namespace` is set and the resource type supports it
 2. **Type** — `jsonPayload.Type` + `jsonPayload.serviceContext.service` (from `--type`, auto-narrowed)
 3. **User** — `--where` (expanded to `jsonPayload.Fields.*`) and `--filter` (raw passthrough)
 

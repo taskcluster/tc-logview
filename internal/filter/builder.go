@@ -8,6 +8,7 @@ import (
 // Params holds the inputs for building a GCP log filter string.
 type Params struct {
 	Cluster      string            // from env config — resource.labels.cluster_name
+	Namespace    string            // from env config — resource.labels.namespace_name (optional)
 	SkipCluster  bool              // if true, omit resource.labels.cluster_name (e.g. for CloudSQL)
 	LogTypes     []string          // --type flag(s) — jsonPayload.Type
 	Service      string            // --service flag or auto-detected — jsonPayload.serviceContext.service
@@ -34,6 +35,9 @@ func Build(p Params) (string, error) {
 
 	if !p.SkipCluster {
 		parts = append(parts, fmt.Sprintf("resource.labels.cluster_name=%q", p.Cluster))
+		if p.Namespace != "" {
+			parts = append(parts, fmt.Sprintf("resource.labels.namespace_name=%q", p.Namespace))
+		}
 	}
 
 	if p.PresetFilter != "" {
