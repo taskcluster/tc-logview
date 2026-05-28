@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.0 - 2026-05-28
+
+### Added
+
+- `tc-logview version` subcommand and `--version` / `-V` flag print the version, embedded commit SHA (from Go build info), and Go runtime version.
+
 ## v1.1.0 - 2026-05-28
 
 ### Added

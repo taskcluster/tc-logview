@@ -19,7 +19,11 @@ var rootCmd = &cobra.Command{
 	Use:   "tc-logview",
 	Short: "Query GCP Cloud Logging for Taskcluster services",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if cmd.Name() == "init" {
+		if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
+			fmt.Fprintln(cmd.OutOrStdout(), versionString())
+			os.Exit(0)
+		}
+		if cmd.Name() == "init" || cmd.Name() == "version" || !cmd.HasParent() {
 			return nil
 		}
 		var err error
@@ -29,11 +33,19 @@ var rootCmd = &cobra.Command{
 		}
 		return nil
 	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
+			fmt.Fprintln(cmd.OutOrStdout(), versionString())
+			return nil
+		}
+		return cmd.Help()
+	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&envFlag, "env", "e", "", "environment name")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show diagnostic messages")
+	rootCmd.PersistentFlags().BoolP("version", "V", false, "show version and exit")
 }
 
 func logInfo(format string, args ...any) {
