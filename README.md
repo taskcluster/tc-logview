@@ -64,6 +64,24 @@ environments:
     cluster: "taskcluster-dev"
     root_url: "https://tc.dev.taskcluster.mozgcp.net"
     # key_path omitted — uses ADC by default
+
+  # Scoped envs for untrusted agents — query a single log view, not the project.
+  fx-ci-scoped:
+    project_id: "moz-fx-taskcluster-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-prod"
+    log_bucket: "gke-taskcluster-prod-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://firefox-ci-tc.services.mozilla.com"
+  community-tc-scoped:
+    project_id: "moz-fx-taskcluster-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-communitytc"
+    log_bucket: "gke-taskcluster-communitytc-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://community-tc.services.mozilla.com"
 ```
 
 ### 2. Authenticate to GCP
@@ -105,6 +123,31 @@ docker run --rm \
 When `TC_LOGVIEW_ACCESS_TOKEN` is set it takes priority over `key_path` and ADC. The container never sees the host's `gcloud` session, never calls the IAM Credentials API, and cannot mint or refresh tokens. Worst-case leakage is one access token, valid only for its TTL (~1h).
 
 Re-mint and re-inject the token before it expires for long-running containers. An expired token surfaces as a `401` from the query path with a hint pointing back at the re-mint command.
+
+#### Scoping a token to TaskCluster logs only (`*-scoped` envs)
+
+An access token minted from your own ADC inherits your privileges — too broad for an untrusted agent. To hand an agent a token that can read **only** TaskCluster's logs, mint it from a dedicated, narrowly-scoped reader service account and point tc-logview at a **log view** instead of the whole project.
+
+This is what the `*-scoped` environments are for. They set three optional fields that confine every query to a single Cloud Logging log view:
+
+| Field | Meaning | Default |
+|---|---|---|
+| `log_view` | View ID; when set, queries are scoped to this view (otherwise project scope) | — (project scope) |
+| `log_bucket` | Bucket holding the view | `_Default` |
+| `log_location` | Bucket location | `global` |
+
+The `tc-logview-reader` service account is granted `roles/logging.viewAccessor` on exactly that view (a per-namespace tenant log bucket), so a token minted from it can read nothing else:
+
+```bash
+# Host: mint a narrow, short-lived token by impersonating the reader SA.
+TOKEN=$(gcloud auth print-access-token \
+  --impersonate-service-account=tc-logview-reader@moz-fx-taskcluster-prod.iam.gserviceaccount.com)
+
+# Agent/container: scoped env queries only the TaskCluster log view.
+TC_LOGVIEW_ACCESS_TOKEN=$TOKEN tc-logview query -e fx-ci-scoped --type monitor.error --since 1h
+```
+
+> Infrastructure presets (`k8s.*`, `cloudsql.*`) are **not** available on `*-scoped` envs — those logs live in other projects/buckets the reader SA can't see. Use the broad envs (with your own ADC) for infra queries.
 
 ### 3. Sync references
 

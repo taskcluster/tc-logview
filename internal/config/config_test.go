@@ -116,6 +116,69 @@ func TestCloudSQLProject(t *testing.T) {
 	}
 }
 
+func TestLogViewResource(t *testing.T) {
+	tests := []struct {
+		name string
+		env  Environment
+		want string
+	}{
+		{
+			name: "no log_view -> project scope (empty)",
+			env:  Environment{ProjectID: "p"},
+			want: "",
+		},
+		{
+			name: "full fields",
+			env: Environment{
+				ProjectID:   "moz-fx-taskcluster-prod",
+				LogBucket:   "gke-taskcluster-prod-log-bucket",
+				LogLocation: "global",
+				LogView:     "_AllLogs",
+			},
+			want: "projects/moz-fx-taskcluster-prod/locations/global/buckets/gke-taskcluster-prod-log-bucket/views/_AllLogs",
+		},
+		{
+			name: "defaults applied when bucket/location omitted",
+			env:  Environment{ProjectID: "p", LogView: "myview"},
+			want: "projects/p/locations/global/buckets/_Default/views/myview",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.env.LogViewResource(); got != tt.want {
+				t.Errorf("LogViewResource() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLogViewResourceRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "config.yaml")
+	content := `environments:
+  fx-ci-scoped:
+    project_id: "moz-fx-taskcluster-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-prod"
+    log_bucket: "gke-taskcluster-prod-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://firefox-ci-tc.services.mozilla.com"
+`
+	if err := os.WriteFile(cfgPath, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadFrom(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	env := cfg.Environments["fx-ci-scoped"]
+	want := "projects/moz-fx-taskcluster-prod/locations/global/buckets/gke-taskcluster-prod-log-bucket/views/_AllLogs"
+	if got := env.LogViewResource(); got != want {
+		t.Errorf("LogViewResource() = %q, want %q", got, want)
+	}
+}
+
 func TestExpandHome(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	tests := []struct {

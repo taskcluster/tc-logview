@@ -94,6 +94,14 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 
 	if preset != nil {
+		// Infra presets (k8s.*, cloudsql.*) read logs that live outside the scoped
+		// log view (other projects/buckets), so they are not available on
+		// log-view-scoped environments. Fail loud rather than silently querying the
+		// wrong project (or relying on an IAM denial).
+		if env.LogViewResource() != "" {
+			return fmt.Errorf("preset %q is not available on log-view-scoped environments (those with log_view set); use a non-scoped environment for k8s/CloudSQL presets", preset.Name)
+		}
+
 		// Preset mode: use preset's filter and field mappings
 		presetFilter := preset.Filter
 		skipCluster := false
@@ -136,7 +144,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 		// Query, cache, format — same as TC path
 		resultsCache := cache.New(filepath.Join(config.CacheDir(), "results"), resultsCacheTTL)
-		cacheKey := resultsCache.Key(env.Cluster, fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339), filterStr)
+		cacheKey := resultsCache.Key(env.Cluster, env.ProjectID, env.LogViewResource(), fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339), filterStr)
 
 		var rawEntries []map[string]interface{}
 		var totalCount int
@@ -169,7 +177,9 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			defer client.Close()
 
 			logInfo("Querying GCP Cloud Logging...")
-			result, err := client.Query(ctx, filterStr, queryLimit+queryOffset)
+			// Presets (k8s/CloudSQL) query at project scope; they are not served
+			// by a tenant log view, so resourceName is intentionally empty.
+			result, err := client.Query(ctx, filterStr, "", queryLimit+queryOffset)
 			if err != nil {
 				wrapped := fmt.Errorf("querying logs (auth=%s): %w", gcp.AuthModeLabel(auth), err)
 				if hint := authHint(err, auth); hint != "" {
@@ -291,7 +301,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 
 	// Check results cache
 	resultsCache := cache.New(filepath.Join(config.CacheDir(), "results"), resultsCacheTTL)
-	cacheKey := resultsCache.Key(env.Cluster, fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339), filterStr)
+	cacheKey := resultsCache.Key(env.Cluster, env.ProjectID, env.LogViewResource(), fromTime.Format(time.RFC3339), toTime.Format(time.RFC3339), filterStr)
 
 	var rawEntries []map[string]interface{}
 	var totalCount int
@@ -320,8 +330,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		}
 		defer client.Close()
 
+		if rn := env.LogViewResource(); rn != "" {
+			logInfo("Scope: %s", rn)
+		}
 		logInfo("Querying GCP Cloud Logging...")
-		result, err := client.Query(ctx, filterStr, queryLimit+queryOffset)
+		result, err := client.Query(ctx, filterStr, env.LogViewResource(), queryLimit+queryOffset)
 		if err != nil {
 			wrapped := fmt.Errorf("querying logs (auth=%s): %w", gcp.AuthModeLabel(auth), err)
 			if hint := authHint(err, auth); hint != "" {

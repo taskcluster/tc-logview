@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Per-environment log-view scoping: `log_view` (with optional `log_bucket`, `log_location`) confines queries to a single Cloud Logging log view instead of the whole project. When `log_view` is unset, behavior is unchanged (project scope).
+- `fx-ci-scoped` / `community-tc-scoped` example environments, intended for untrusted agents/containers: a token minted from the narrow `tc-logview-reader` service account can read only TaskCluster's per-namespace tenant log bucket. Under `-v`, the active scope is printed as `Scope: <view resource>`.
+
+### Changed
+
+- `TASKCLUSTER_ROOT_URL` auto-detection now ignores log-view-scoped environments (they share a `root_url` with their broad counterpart). Scoped envs must be selected explicitly with `--env`; auto-detect resolves deterministically to the broad env.
+- Result cache keys now include the environment's project and log-view scope, so scoped and broad environments no longer share cache entries.
+
+### Notes
+
+- Infrastructure presets (`k8s.*`, `cloudsql.*`) are not available on `*-scoped` envs — those logs live in other projects/buckets; querying one now returns a clear error (instead of silently hitting the wrong project). Use the broad envs with your own ADC.
+
 ## v1.3.1 - 2026-05-29
 
 ### Changed

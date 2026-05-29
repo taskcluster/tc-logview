@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/taskcluster/tc-logview/internal/config"
 	"github.com/taskcluster/tc-logview/internal/gcp"
 )
 
@@ -50,6 +51,55 @@ func TestAuthModeMessage(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResolveEnvAutoDetectSkipsScoped(t *testing.T) {
+	prevCfg, prevFlag := cfg, envFlag
+	t.Cleanup(func() { cfg, envFlag = prevCfg, prevFlag })
+
+	envFlag = ""
+	t.Setenv("TASKCLUSTER_ROOT_URL", "https://firefox-ci-tc.services.mozilla.com")
+	cfg = &config.Config{Environments: map[string]config.Environment{
+		"fx-ci": {
+			ProjectID: "moz-fx-webservices-high-prod",
+			RootURL:   "https://firefox-ci-tc.services.mozilla.com",
+		},
+		"fx-ci-scoped": {
+			ProjectID:   "moz-fx-taskcluster-prod",
+			RootURL:     "https://firefox-ci-tc.services.mozilla.com",
+			LogBucket:   "gke-taskcluster-prod-log-bucket",
+			LogLocation: "global",
+			LogView:     "_AllLogs",
+		},
+	}}
+
+	// Map iteration is randomized; a nondeterministic resolveEnv would eventually
+	// pick the scoped env. Run enough times to catch that.
+	for i := 0; i < 50; i++ {
+		env, err := resolveEnv()
+		if err != nil {
+			t.Fatalf("resolveEnv: %v", err)
+		}
+		if env.ProjectID != "moz-fx-webservices-high-prod" || env.LogViewResource() != "" {
+			t.Fatalf("auto-detect selected scoped env (project=%s, view=%q); want broad env",
+				env.ProjectID, env.LogViewResource())
+		}
+	}
+}
+
+func TestResolveEnvScopedOnlyRequiresExplicit(t *testing.T) {
+	prevCfg, prevFlag := cfg, envFlag
+	t.Cleanup(func() { cfg, envFlag = prevCfg, prevFlag })
+
+	envFlag = ""
+	t.Setenv("TASKCLUSTER_ROOT_URL", "https://example.com")
+	cfg = &config.Config{Environments: map[string]config.Environment{
+		"only-scoped": {ProjectID: "p", RootURL: "https://example.com", LogView: "_AllLogs"},
+	}}
+
+	if _, err := resolveEnv(); err == nil {
+		t.Fatal("expected error when only a scoped env matches TASKCLUSTER_ROOT_URL")
 	}
 }
 

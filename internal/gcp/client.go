@@ -79,9 +79,11 @@ func AuthModeLabel(auth AuthConfig) string {
 }
 
 // Query executes a GCP Cloud Logging filter query and returns up to limit
-// entries, newest first (reversed before display).
-func (c *Client) Query(ctx context.Context, filter string, limit int) (*QueryResult, error) {
-	it := c.adminClient.Entries(ctx, logadmin.Filter(filter), logadmin.NewestFirst())
+// entries, newest first (reversed before display). When resourceName is
+// non-empty, the query is scoped to that resource (e.g. a log view) instead of
+// the client's project; an empty resourceName preserves project-scope behavior.
+func (c *Client) Query(ctx context.Context, filter, resourceName string, limit int) (*QueryResult, error) {
+	it := c.adminClient.Entries(ctx, queryOptions(filter, resourceName)...)
 
 	result := &QueryResult{}
 	for i := 0; i < limit; i++ {
@@ -98,6 +100,17 @@ func (c *Client) Query(ctx context.Context, filter string, limit int) (*QueryRes
 
 	result.Total = len(result.Entries)
 	return result, nil
+}
+
+// queryOptions builds the logadmin EntriesOptions for a query. When
+// resourceName is non-empty, a ResourceNames option scopes the query to that
+// resource (e.g. a log view), overriding the client's default project scope.
+func queryOptions(filter, resourceName string) []logadmin.EntriesOption {
+	opts := []logadmin.EntriesOption{logadmin.Filter(filter), logadmin.NewestFirst()}
+	if resourceName != "" {
+		opts = append(opts, logadmin.ResourceNames([]string{resourceName}))
+	}
+	return opts
 }
 
 // Close closes the underlying logadmin client.
