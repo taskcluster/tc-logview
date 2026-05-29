@@ -157,10 +157,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			if skipCluster {
 				projectID = env.CloudSQLProject()
 			}
-			logInfo("%s", authModeMessage(projectID, env.KeyPath))
-			client, err := gcp.NewClient(ctx, projectID, env.KeyPath)
+			auth := resolveAuth(env)
+			logInfo("%s", authModeMessage(projectID, auth))
+			client, err := gcp.NewClient(ctx, projectID, auth)
 			if err != nil {
-				if hint := adcHintIfMissing(err, env.KeyPath); hint != "" {
+				if hint := authHint(err, auth); hint != "" {
 					return fmt.Errorf("creating GCP client: %w\n%s", err, hint)
 				}
 				return fmt.Errorf("creating GCP client: %w", err)
@@ -170,7 +171,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 			logInfo("Querying GCP Cloud Logging...")
 			result, err := client.Query(ctx, filterStr, queryLimit+queryOffset)
 			if err != nil {
-				return fmt.Errorf("querying logs: %w", err)
+				wrapped := fmt.Errorf("querying logs (auth=%s): %w", gcp.AuthModeLabel(auth), err)
+				if hint := authHint(err, auth); hint != "" {
+					return fmt.Errorf("%w\n%s", wrapped, hint)
+				}
+				return wrapped
 			}
 
 			rawEntries = result.Entries
@@ -304,10 +309,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	// Query GCP if not cached
 	if rawEntries == nil {
 		ctx := context.Background()
-		logInfo("%s", authModeMessage(env.ProjectID, env.KeyPath))
-		client, err := gcp.NewClient(ctx, env.ProjectID, env.KeyPath)
+		auth := resolveAuth(env)
+		logInfo("%s", authModeMessage(env.ProjectID, auth))
+		client, err := gcp.NewClient(ctx, env.ProjectID, auth)
 		if err != nil {
-			if hint := adcHintIfMissing(err, env.KeyPath); hint != "" {
+			if hint := authHint(err, auth); hint != "" {
 				return fmt.Errorf("creating GCP client: %w\n%s", err, hint)
 			}
 			return fmt.Errorf("creating GCP client: %w", err)
@@ -317,7 +323,11 @@ func runQuery(cmd *cobra.Command, args []string) error {
 		logInfo("Querying GCP Cloud Logging...")
 		result, err := client.Query(ctx, filterStr, queryLimit+queryOffset)
 		if err != nil {
-			return fmt.Errorf("querying logs: %w", err)
+			wrapped := fmt.Errorf("querying logs (auth=%s): %w", gcp.AuthModeLabel(auth), err)
+			if hint := authHint(err, auth); hint != "" {
+				return fmt.Errorf("%w\n%s", wrapped, hint)
+			}
+			return wrapped
 		}
 
 		rawEntries = result.Entries
@@ -374,7 +384,7 @@ func runQuery(cmd *cobra.Command, args []string) error {
 	}
 
 	// Add message field when --filter is used or there are just two columns (ts, service)
-	if (queryFilter != "" || len(types) == 0 ) && !slices.Contains(fieldNames, "message") {
+	if (queryFilter != "" || len(types) == 0) && !slices.Contains(fieldNames, "message") {
 		fieldNames = append(fieldNames, "message")
 	}
 

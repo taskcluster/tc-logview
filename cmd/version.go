@@ -9,7 +9,7 @@ import (
 )
 
 // version is bumped manually with each release. Keep in sync with CHANGELOG.md.
-const version = "v1.2.0"
+const version = "v1.3.0"
 
 var versionCmd = &cobra.Command{
 	Use:   "version",

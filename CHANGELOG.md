@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.3.0 - 2026-05-28
+
+### Added
+
+- Pre-issued OAuth2 access tokens via the `TC_LOGVIEW_ACCESS_TOKEN` env var. Intended for containers/agents that should run without access to the host's `gcloud` session or a long-lived service account key. The host mints a short-lived, SA-scoped token (e.g. `gcloud auth print-access-token --impersonate-service-account=<SA>`) and injects only the token; tc-logview itself does not impersonate or refresh.
+- Auth precedence is now `TC_LOGVIEW_ACCESS_TOKEN` > `key_path` > ADC; the active mode is logged under `-v` as `token`, `key_file`, or `ADC`. Client-create and query errors are tagged with the active mode for diagnosability.
+- Expired/invalid token errors append a one-line hint pointing at the re-mint command.
+
+### Changed
+
+- `config init` template's authentication comment block now documents all three modes and the priority order.
+- README Setup section gains Option C describing the host-mints-token / container-consumes-token flow.
+
 ## v1.2.0 - 2026-05-28
 
 ### Added

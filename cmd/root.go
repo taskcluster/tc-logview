@@ -5,9 +5,17 @@ import (
 	"os"
 	"strings"
 
-	"github.com/taskcluster/tc-logview/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/taskcluster/tc-logview/internal/config"
+	"github.com/taskcluster/tc-logview/internal/gcp"
 )
+
+// accessTokenEnv is the env var that injects a pre-issued OAuth2 bearer
+// token into tc-logview. Set by host orchestration (e.g. a wrapper script
+// running `gcloud auth print-access-token --impersonate-service-account=...`)
+// to give a container short-lived, SA-scoped credentials without mounting
+// the host's gcloud session.
+const accessTokenEnv = "TC_LOGVIEW_ACCESS_TOKEN"
 
 var (
 	envFlag string
@@ -54,33 +62,52 @@ func logInfo(format string, args ...any) {
 	}
 }
 
+// resolveAuth assembles the AuthConfig for the current invocation by combining
+// the env-var token (if present) with the per-env key_path from config.
+func resolveAuth(env *config.Environment) gcp.AuthConfig {
+	return gcp.AuthConfig{
+		KeyPath:     env.KeyPath,
+		AccessToken: os.Getenv(accessTokenEnv),
+	}
+}
+
 // authModeMessage returns a human-readable description of which auth mode
 // the gcp client will use for the given project. Intended for stderr
 // diagnostics under -v.
-func authModeMessage(projectID, keyPath string) string {
-	if keyPath == "" {
+func authModeMessage(projectID string, auth gcp.AuthConfig) string {
+	switch {
+	case auth.AccessToken != "":
+		return fmt.Sprintf(
+			"auth: using injected access token from %s (project=%s)",
+			accessTokenEnv, projectID,
+		)
+	case auth.KeyPath != "":
+		return fmt.Sprintf(
+			"auth: using service account key file (project=%s, path=%s)",
+			projectID, auth.KeyPath,
+		)
+	default:
 		return fmt.Sprintf(
 			"auth: no key_path configured, using application default credentials (project=%s)",
 			projectID,
 		)
 	}
-	return fmt.Sprintf(
-		"auth: using service account key file (project=%s, path=%s)",
-		projectID, keyPath,
-	)
 }
 
-// adcHintIfMissing returns a one-line hint when a GCP client-create error
-// indicates that Application Default Credentials are not configured AND
-// the user has no key_path set. Empty string in any other case.
-func adcHintIfMissing(err error, keyPath string) string {
-	if err == nil || keyPath != "" {
+// authHint returns a one-line, mode-specific hint when a GCP error suggests
+// a fixable auth misconfiguration. Empty string when no hint applies.
+func authHint(err error, auth gcp.AuthConfig) string {
+	if err == nil {
 		return ""
 	}
-	if !strings.Contains(err.Error(), "could not find default credentials") {
-		return ""
+	msg := err.Error()
+	switch {
+	case auth.AccessToken != "" && (strings.Contains(msg, "invalid") || strings.Contains(msg, "expired") || strings.Contains(msg, "401")):
+		return fmt.Sprintf("hint: %s may be expired (~1h TTL).\n      Re-mint: gcloud auth print-access-token --impersonate-service-account=<SA>", accessTokenEnv)
+	case auth.AccessToken == "" && auth.KeyPath == "" && strings.Contains(msg, "could not find default credentials"):
+		return "hint: run `gcloud auth application-default login`, or set `key_path` in ~/.config/tc-logview/config.yaml"
 	}
-	return "hint: run `gcloud auth application-default login`, or set `key_path` in ~/.config/tc-logview/config.yaml"
+	return ""
 }
 
 func Execute() error {
