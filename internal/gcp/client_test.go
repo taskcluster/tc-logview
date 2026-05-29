@@ -284,18 +284,21 @@ func TestExtractFieldsWithPaths_ResourceLabels(t *testing.T) {
 
 func TestAuthModeLabel(t *testing.T) {
 	tests := []struct {
-		name    string
-		keyPath string
-		want    string
+		name string
+		auth AuthConfig
+		want string
 	}{
-		{"empty key_path -> ADC", "", "ADC"},
-		{"non-empty key_path -> key_file", "/etc/keys/x.json", "key_file"},
-		{"whitespace is treated as set (not trimmed)", " ", "key_file"},
+		{"empty -> ADC", AuthConfig{}, "ADC"},
+		{"only key_path -> key_file", AuthConfig{KeyPath: "/etc/keys/x.json"}, "key_file"},
+		{"only access_token -> token", AuthConfig{AccessToken: "ya29.fake"}, "token"},
+		{"token wins over key_path", AuthConfig{KeyPath: "/etc/keys/x.json", AccessToken: "ya29.fake"}, "token"},
+		{"whitespace key_path treated as set", AuthConfig{KeyPath: " "}, "key_file"},
+		{"whitespace token treated as set", AuthConfig{AccessToken: " "}, "token"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := authModeLabel(tt.keyPath); got != tt.want {
-				t.Errorf("authModeLabel(%q) = %q, want %q", tt.keyPath, got, tt.want)
+			if got := AuthModeLabel(tt.auth); got != tt.want {
+				t.Errorf("AuthModeLabel(%+v) = %q, want %q", tt.auth, got, tt.want)
 			}
 		})
 	}

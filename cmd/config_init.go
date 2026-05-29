@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/taskcluster/tc-logview/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/taskcluster/tc-logview/internal/config"
 )
 
 var forceInit bool
@@ -36,9 +36,12 @@ var configInitCmd = &cobra.Command{
 
 		example := `# tc-logview configuration
 #
-# Authentication:
+# Authentication (priority: TC_LOGVIEW_ACCESS_TOKEN > key_path > ADC):
+#   - Export ` + "`TC_LOGVIEW_ACCESS_TOKEN`" + ` to use a pre-issued OAuth2 bearer
+#     token (short-lived; ideal for containers/agents — host mints via
+#     ` + "`gcloud auth print-access-token --impersonate-service-account=<SA>`" + `).
 #   - Set ` + "`key_path`" + ` to use a service account JSON key
-#     (intended for untrusted/containerized environments).
+#     (long-lived; intended for environments that cannot refresh tokens).
 #   - Omit ` + "`key_path`" + ` to use Application Default Credentials
 #     (run ` + "`gcloud auth application-default login`" + ` once on your machine).
 #

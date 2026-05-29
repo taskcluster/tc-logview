@@ -68,7 +68,7 @@ environments:
 
 ### 2. Authenticate to GCP
 
-Choose one of the two options below per environment. In the example config above, `fx-ci`, `community-tc`, and `staging` use service account keys (Option B); `dev` uses ADC (Option A).
+Choose one of the three options below. Options A and B are configured per environment in `config.yaml`; Option C is selected at runtime via the `TC_LOGVIEW_ACCESS_TOKEN` env var and overrides whatever the config says. In the example above, `fx-ci`, `community-tc`, and `staging` use service account keys (Option B); `dev` uses ADC (Option A).
 
 #### Option A — Application Default Credentials (recommended for local use)
 
@@ -85,6 +85,26 @@ Then **omit `key_path`** for any environment that should use ADC. tc-logview wil
 Place your service account JSON key in `~/.config/tc-logview/keys/` and set `key_path` for that environment. The service account only needs `roles/logging.viewer` — CloudSQL logs are read through Cloud Logging too, so no additional roles are required.
 
 This mode is what you want inside an untrusted/containerized environment where you do not want to share your personal `gcloud` session.
+
+#### Option C — Injected access token (recommended for containers / agents)
+
+For containers running untrusted code (agents, CI jobs, ephemeral sandboxes), prefer a pre-issued short-lived bearer token over a long-lived service account key. The host impersonates a low-privilege service account once and passes only the resulting access token into the container.
+
+```bash
+# On the host (requires roles/iam.serviceAccountTokenCreator on the SA):
+TOKEN=$(gcloud auth print-access-token \
+  --impersonate-service-account=tc-log-reader@<PROJECT>.iam.gserviceaccount.com)
+
+# Run tc-logview with the token in the container's env:
+docker run --rm \
+  -e TC_LOGVIEW_ACCESS_TOKEN="$TOKEN" \
+  -e TASKCLUSTER_ROOT_URL=https://firefox-ci-tc.services.mozilla.com \
+  tc-logview-image query --type worker-stopped --limit 5
+```
+
+When `TC_LOGVIEW_ACCESS_TOKEN` is set it takes priority over `key_path` and ADC. The container never sees the host's `gcloud` session, never calls the IAM Credentials API, and cannot mint or refresh tokens. Worst-case leakage is one access token, valid only for its TTL (~1h).
+
+Re-mint and re-inject the token before it expires for long-running containers. An expired token surfaces as a `401` from the query path with a hint pointing back at the re-mint command.
 
 ### 3. Sync references
 

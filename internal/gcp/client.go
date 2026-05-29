@@ -10,6 +10,7 @@ import (
 	"cloud.google.com/go/logging"
 	"cloud.google.com/go/logging/logadmin"
 	"github.com/tidwall/gjson"
+	"golang.org/x/oauth2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -30,18 +31,33 @@ type QueryResult struct {
 	Total   int
 }
 
-// NewClient creates a new GCP logging client. When keyPath is non-empty,
-// authenticates with the file at keyPath. When empty, falls back to
-// Application Default Credentials (the SDK's default credential chain).
-func NewClient(ctx context.Context, projectID, keyPath string) (*Client, error) {
+// AuthConfig selects how NewClient authenticates to GCP. Branches are
+// evaluated in priority order: AccessToken > KeyPath > Application Default
+// Credentials.
+type AuthConfig struct {
+	// KeyPath is the path to a service account JSON key.
+	KeyPath string
+	// AccessToken is a pre-issued OAuth2 bearer token. When set, it takes
+	// priority over KeyPath and ADC; tc-logview does not mint or refresh it.
+	AccessToken string
+}
+
+// NewClient creates a new GCP logging client. Authentication is selected by
+// auth: a non-empty AccessToken wins, otherwise a non-empty KeyPath, otherwise
+// the SDK's Application Default Credentials chain.
+func NewClient(ctx context.Context, projectID string, auth AuthConfig) (*Client, error) {
 	var opts []option.ClientOption
-	if keyPath != "" {
-		opts = append(opts, option.WithCredentialsFile(keyPath))
+	switch {
+	case auth.AccessToken != "":
+		ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: auth.AccessToken})
+		opts = append(opts, option.WithTokenSource(ts))
+	case auth.KeyPath != "":
+		opts = append(opts, option.WithCredentialsFile(auth.KeyPath))
 	}
 	adminClient, err := logadmin.NewClient(ctx, projectID, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create logadmin client (project=%s, auth=%s): %w",
-			projectID, authModeLabel(keyPath), err)
+			projectID, AuthModeLabel(auth), err)
 	}
 	return &Client{
 		project:     projectID,
@@ -49,13 +65,17 @@ func NewClient(ctx context.Context, projectID, keyPath string) (*Client, error) 
 	}, nil
 }
 
-// authModeLabel reports the auth mode tag used in error messages.
-// Empty keyPath means Application Default Credentials.
-func authModeLabel(keyPath string) string {
-	if keyPath == "" {
+// AuthModeLabel reports the auth mode tag used in error messages, following
+// the same priority order as NewClient: token > key_file > ADC.
+func AuthModeLabel(auth AuthConfig) string {
+	switch {
+	case auth.AccessToken != "":
+		return "token"
+	case auth.KeyPath != "":
+		return "key_file"
+	default:
 		return "ADC"
 	}
-	return "key_file"
 }
 
 // Query executes a GCP Cloud Logging filter query and returns up to limit
