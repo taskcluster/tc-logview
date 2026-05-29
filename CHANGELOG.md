@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.1 - 2026-05-29
+
+### Changed
+
+- Updated version number
+- Dependabot security updates
+
 ## v1.3.0 - 2026-05-28
 
 ### Added
