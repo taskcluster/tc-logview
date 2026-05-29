@@ -5,7 +5,7 @@
 ### Added
 
 - Per-environment log-view scoping: `log_view` (with optional `log_bucket`, `log_location`) confines queries to a single Cloud Logging log view instead of the whole project. When `log_view` is unset, behavior is unchanged (project scope).
-- `fx-ci-scoped` / `community-tc-scoped` example environments, intended for untrusted agents/containers: a token minted from the narrow `tc-logview-reader` service account can read only TaskCluster's per-namespace tenant log bucket. Under `-v`, the active scope is printed as `Scope: <view resource>`.
+- `fx-ci-scoped` / `community-tc-scoped` / `staging-scoped` example environments, intended for untrusted agents/containers: a token minted from the narrow `tc-logview-reader` service account can read only TaskCluster's per-namespace tenant log bucket. Under `-v`, the active scope is printed as `Scope: <view resource>`.
 
 ### Changed
 

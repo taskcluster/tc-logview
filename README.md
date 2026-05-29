@@ -82,6 +82,14 @@ environments:
     log_location: "global"
     log_view: "_AllLogs"
     root_url: "https://community-tc.services.mozilla.com"
+  staging-scoped:
+    project_id: "moz-fx-webservices-high-nonpro"
+    cluster: "webservices-high-nonprod"
+    namespace: "taskcluster-stage"
+    log_bucket: "gke-taskcluster-stage-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
 ```
 
 ### 2. Authenticate to GCP
@@ -147,7 +155,19 @@ TOKEN=$(gcloud auth print-access-token \
 TC_LOGVIEW_ACCESS_TOKEN=$TOKEN tc-logview query -e fx-ci-scoped --type monitor.error --since 1h
 ```
 
+The same `tc-logview-reader` service account backs all scoped envs:
+
+| Scoped env | Project | Log bucket |
+|---|---|---|
+| `fx-ci-scoped` | `moz-fx-taskcluster-prod` | `gke-taskcluster-prod-log-bucket` |
+| `community-tc-scoped` | `moz-fx-taskcluster-prod` | `gke-taskcluster-communitytc-log-bucket` |
+| `staging-scoped` | `moz-fx-webservices-high-nonpro` | `gke-taskcluster-stage-log-bucket` |
+
+The reader SA lives in the prod project; for `staging-scoped` it's granted `viewAccessor` on the stage bucket in the nonprod project, so the same impersonation command works for all three.
+
 > Infrastructure presets (`k8s.*`, `cloudsql.*`) are **not** available on `*-scoped` envs — those logs live in other projects/buckets the reader SA can't see. Use the broad envs (with your own ADC) for infra queries.
+
+> Auto-detection via `TASKCLUSTER_ROOT_URL` always resolves to the broad env (scoped envs share its `root_url`); select a scoped env explicitly with `-e`.
 
 ### 3. Sync references
 
