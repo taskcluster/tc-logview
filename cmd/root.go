@@ -124,12 +124,25 @@ func resolveEnv() (*config.Environment, error) {
 	}
 	rootURL := os.Getenv("TASKCLUSTER_ROOT_URL")
 	if rootURL != "" {
+		// Auto-detection deliberately ignores log-view-scoped environments:
+		// multiple envs (broad + scoped) can share a root_url, and a scoped env
+		// uses different credentials/scope. Scoped access must be opted into
+		// explicitly with --env, so detection resolves to the broad env only.
+		var scopedMatch string
 		for name, env := range cfg.Environments {
-			if env.RootURL == rootURL {
-				e := env
-				logInfo("Auto-detected environment: %s", name)
-				return &e, nil
+			if env.RootURL != rootURL {
+				continue
 			}
+			if env.LogViewResource() != "" {
+				scopedMatch = name
+				continue
+			}
+			e := env
+			logInfo("Auto-detected environment: %s", name)
+			return &e, nil
+		}
+		if scopedMatch != "" {
+			return nil, fmt.Errorf("TASKCLUSTER_ROOT_URL=%q matches only the scoped environment %q; select it explicitly with --env", rootURL, scopedMatch)
 		}
 		return nil, fmt.Errorf("TASKCLUSTER_ROOT_URL=%q does not match any environment", rootURL)
 	}

@@ -75,6 +75,36 @@ environments:
     cluster: "taskcluster-dev"
     root_url: "https://tc.dev.taskcluster.mozgcp.net"
     # key_path omitted — uses ADC by default
+
+  # Scoped environments for untrusted agents/containers. These query a single
+  # Cloud Logging log view (a per-namespace tenant bucket) instead of the whole
+  # project, so an injected TC_LOGVIEW_ACCESS_TOKEN minted from the narrow
+  # tc-logview-reader service account can read ONLY TaskCluster service logs.
+  # Infra/k8s/CloudSQL presets are not available here — use the broad envs above.
+  fx-ci-scoped:
+    project_id: "moz-fx-taskcluster-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-prod"
+    log_bucket: "gke-taskcluster-prod-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://firefox-ci-tc.services.mozilla.com"
+  community-tc-scoped:
+    project_id: "moz-fx-taskcluster-prod"
+    cluster: "webservices-high-prod"
+    namespace: "taskcluster-communitytc"
+    log_bucket: "gke-taskcluster-communitytc-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://community-tc.services.mozilla.com"
+  staging-scoped:
+    project_id: "moz-fx-webservices-high-nonpro"
+    cluster: "webservices-high-nonprod"
+    namespace: "taskcluster-stage"
+    log_bucket: "gke-taskcluster-stage-log-bucket"
+    log_location: "global"
+    log_view: "_AllLogs"
+    root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
 `
 		if err := os.WriteFile(cfgPath, []byte(example), 0o644); err != nil {
 			return fmt.Errorf("writing config: %w", err)

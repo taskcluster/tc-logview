@@ -304,6 +304,18 @@ func TestAuthModeLabel(t *testing.T) {
 	}
 }
 
+func TestQueryOptions(t *testing.T) {
+	// Project scope: filter + newestFirst only, no ResourceNames.
+	if got := len(queryOptions("jsonPayload.Type=\"x\"", "")); got != 2 {
+		t.Errorf("queryOptions with empty resourceName: got %d options, want 2", got)
+	}
+	// View scope: adds a ResourceNames option.
+	rn := "projects/p/locations/global/buckets/b/views/_AllLogs"
+	if got := len(queryOptions("jsonPayload.Type=\"x\"", rn)); got != 3 {
+		t.Errorf("queryOptions with resourceName: got %d options, want 3", got)
+	}
+}
+
 func TestExtractFieldsWithPaths_FallbackToStandard(t *testing.T) {
 	raw := map[string]interface{}{
 		"timestamp": "2026-03-10T12:00:00Z",

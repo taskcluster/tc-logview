@@ -10,13 +10,16 @@ import (
 )
 
 type Environment struct {
-	ProjectID        string `yaml:"project_id"`
+	ProjectID         string `yaml:"project_id"`
 	CloudSQLProjectID string `yaml:"cloudsql_project_id,omitempty"`
-	Cluster          string `yaml:"cluster"`
-	Namespace        string `yaml:"namespace,omitempty"`
-	RootURL          string `yaml:"root_url"`
-	KeyPath          string `yaml:"key_path,omitempty"`
-	CloudSQLInstance string `yaml:"cloudsql_instance,omitempty"`
+	Cluster           string `yaml:"cluster"`
+	Namespace         string `yaml:"namespace,omitempty"`
+	RootURL           string `yaml:"root_url"`
+	KeyPath           string `yaml:"key_path,omitempty"`
+	CloudSQLInstance  string `yaml:"cloudsql_instance,omitempty"`
+	LogBucket         string `yaml:"log_bucket,omitempty"`
+	LogLocation       string `yaml:"log_location,omitempty"`
+	LogView           string `yaml:"log_view,omitempty"`
 }
 
 // CloudSQLProject returns the GCP project that holds the CloudSQL instance.
@@ -26,6 +29,26 @@ func (e Environment) CloudSQLProject() string {
 		return e.CloudSQLProjectID
 	}
 	return e.ProjectID
+}
+
+// LogViewResource returns the fully-qualified Cloud Logging log view resource
+// name to scope queries to, or "" to query at project scope (the default,
+// unchanged behavior). A non-empty LogView is the trigger; LogBucket defaults
+// to "_Default" and LogLocation to "global" when unset.
+func (e Environment) LogViewResource() string {
+	if e.LogView == "" {
+		return ""
+	}
+	bucket := e.LogBucket
+	if bucket == "" {
+		bucket = "_Default"
+	}
+	location := e.LogLocation
+	if location == "" {
+		location = "global"
+	}
+	return fmt.Sprintf("projects/%s/locations/%s/buckets/%s/views/%s",
+		e.ProjectID, location, bucket, e.LogView)
 }
 
 type Config struct {
