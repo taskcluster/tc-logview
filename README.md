@@ -92,6 +92,8 @@ environments:
     root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
 ```
 
+> Tip: `tc-logview auth` prints a summary of all auth modes, the config-init step, and the scoped-token recipe, plus a table of your configured environments.
+
 ### 2. Authenticate to GCP
 
 Choose one of the three options below. Options A and B are configured per environment in `config.yaml`; Option C is selected at runtime via the `TC_LOGVIEW_ACCESS_TOKEN` env var and overrides whatever the config says. In the example above, `fx-ci`, `community-tc`, and `staging` use service account keys (Option B); `dev` uses ADC (Option A).
