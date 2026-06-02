@@ -26,12 +26,21 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "tc-logview",
 	Short: "Query GCP Cloud Logging for Taskcluster services",
+	Long: `tc-logview queries GCP Cloud Logging for Taskcluster services.
+
+Getting started:
+  tc-logview config init    create the config file (if missing)
+  tc-logview auth           how to authenticate (ADC, key file, scoped token)
+  tc-logview sync           fetch log type references
+  tc-logview query ...      query logs
+
+Run 'tc-logview auth' for authentication and scoped-token setup.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
 			fmt.Fprintln(cmd.OutOrStdout(), versionString())
 			os.Exit(0)
 		}
-		if cmd.Name() == "init" || cmd.Name() == "version" || !cmd.HasParent() {
+		if cmd.Name() == "init" || cmd.Name() == "version" || cmd.Name() == "auth" || !cmd.HasParent() {
 			return nil
 		}
 		var err error
