@@ -13,7 +13,7 @@ You are debugging Taskcluster by querying task status/logs via the `taskcluster`
 For broad "what happened?" investigations across environments, use the pre-built aggregation script before running manual queries:
 
 ```bash
-bash ~/.claude/skills/debug-tc-logs/tc-health-summary.sh --since 12h
+bash "${CLAUDE_PLUGIN_ROOT}/skills/debug-tc-logs/tc-health-summary.sh" --since 12h
 # or: --since 6h, --envs "fx-ci", --envs "community-tc fx-ci staging", etc.
 ```
 

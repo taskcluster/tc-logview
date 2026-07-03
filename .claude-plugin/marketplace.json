@@ -1,0 +1,17 @@
+{
+  "name": "tc-logview",
+  "owner": {
+    "name": "Yaraslau Kurmyza",
+    "email": "ykurmyza@mozilla.com"
+  },
+  "description": "Taskcluster debugging tools for Claude Code, built around the tc-logview CLI.",
+  "plugins": [
+    {
+      "name": "debug-tc-logs",
+      "source": "./plugins/debug-tc-logs",
+      "description": "Debug Taskcluster task/worker/API/queue issues via the taskcluster CLI and GCP Cloud Logging.",
+      "category": "debugging",
+      "keywords": ["taskcluster", "gcp", "logging", "debugging"]
+    }
+  ]
+}
