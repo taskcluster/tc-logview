@@ -1,6 +1,5 @@
 {
   "name": "debug-tc-logs",
-  "version": "1.0.0",
   "description": "Debug Taskcluster issues — task failures, worker problems, API errors, queue issues — by querying task status/logs via the taskcluster CLI and GCP Cloud Logging via tc-logview across community-tc, fx-ci, staging, and dev.",
   "author": {
     "name": "Yaraslau Kurmyza",
