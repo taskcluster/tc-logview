@@ -325,6 +325,17 @@ The tool builds GCP filters from three layers:
 - **References** (`~/.cache/tc-logview/references/`) — Cached indefinitely, refresh with `tc-logview sync`
 - **Query results** (`~/.cache/tc-logview/results/`) — 14-day TTL, keyed by MD5 of environment + time window + filter. Only absolute time windows are cached; `--since` is resolved to the nearest minute for the cache key.
 
+## Claude Code plugin
+
+This repo also ships a [Claude Code](https://code.claude.com) plugin, `debug-tc-logs`, that drives `tc-logview` and the `taskcluster` CLI to debug Taskcluster issues from within Claude. Install it straight from this repo:
+
+```
+/plugin marketplace add taskcluster/tc-logview
+/plugin install debug-tc-logs@tc-logview
+```
+
+See [`plugins/debug-tc-logs/README.md`](plugins/debug-tc-logs/README.md) for prerequisites and usage.
+
 ## Project structure
 
 ```
