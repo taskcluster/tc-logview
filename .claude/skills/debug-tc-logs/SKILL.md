@@ -317,6 +317,7 @@ Map the user's problem to the right playbook, then read and follow it. Each play
 | Task failure (given a task ID/URL) | `examples/task-failure-debugging.md` |
 | Workers disappearing, removed, zombie | `examples/worker-removal-reasons.md` |
 | Azure provider, ARM deployments, scanner slow, throttling | `examples/azure-provider-debugging.md` |
+| Scanner efficiency / concurrency: measure a change, prove speedup, load-normalize | `examples/worker-scanner-efficiency.md` (+ `examples/scanner-efficiency.py`) |
 | Queue health, claim-expired, deadlines, pulse | `examples/queue-health-investigation.md` |
 | GitHub integrations, webhooks, handler errors | `examples/github-service-debugging.md` |
 | HTTP 502s, load balancer errors | `examples/http-502-investigation.md` |
