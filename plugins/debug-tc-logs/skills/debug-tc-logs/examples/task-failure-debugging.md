@@ -7,7 +7,7 @@ Investigation playbook when given a task ID or task URL.
 Parse `tasks/<taskId>` from TC URLs:
 - `https://firefox-ci-tc.services.mozilla.com/tasks/IKBB-zASS_uNES7KC8MJpg` → taskId=`IKBB-zASS_uNES7KC8MJpg`, env=fx-ci
 - `https://community-tc.services.mozilla.com/tasks/...` → env=community-tc
-- `https://stage.taskcluster.net/tasks/...` → env=staging
+- `https://stage.taskcluster.nonprod.cloudops.mozgcp.net/tasks/...` → env=staging
 
 ## 2. Get task status and definition
 

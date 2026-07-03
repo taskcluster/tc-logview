@@ -56,7 +56,7 @@ The `taskcluster` CLI is a first-class debugging tool for inspecting task state,
 TASKCLUSTER_ROOT_URL=https://community-tc.services.mozilla.com taskcluster ...
 
 # staging
-TASKCLUSTER_ROOT_URL=https://stage.taskcluster.net taskcluster ...
+TASKCLUSTER_ROOT_URL=https://stage.taskcluster.nonprod.cloudops.mozgcp.net taskcluster ...
 ```
 
 ### Key Commands
@@ -121,14 +121,14 @@ By default only public API calls work (task status, definitions, public artifact
 
 ## 3. Environment Mapping
 
-| Environment | GCP Project | Cluster Name | Key File |
-|---|---|---|---|
-| community-tc | `moz-fx-taskcluster-prod-4b87` | `taskcluster-communitytc-v1` | `tc-prod.json` |
-| fx-ci | `moz-fx-taskcluster-prod-4b87` | `taskcluster-firefoxcitc-v1` | `tc-prod.json` |
-| staging | `moz-fx-taskclust-nonprod-9302` | `taskcluster-nonprod-v1` | `tc-nonprod.json` |
-| dev | `taskcluster-dev` | `taskcluster-dev` | `tc-dev.json` |
+| Environment | GCP Project | Cluster | Namespace | Key File |
+|---|---|---|---|---|
+| community-tc | `moz-fx-webservices-high-prod` | `webservices-high-prod` | `taskcluster-communitytc` | `tc-prod.json` |
+| fx-ci | `moz-fx-webservices-high-prod` | `webservices-high-prod` | `taskcluster-prod` | `tc-prod.json` |
+| staging | `moz-fx-webservices-high-nonpro` | `webservices-high-nonprod` | `taskcluster-stage` | `tc-staging.json` |
+| dev | `taskcluster-dev` | `taskcluster-dev` | — | — (ADC) |
 
-Note: community-tc and fx-ci share the same GCP project and key file but have different cluster names. The `tc-logview` config handles this automatically — use `-e fx-ci` or `-e community-tc`.
+Note: community-tc and fx-ci share the same GCP project **and** cluster (`webservices-high-prod`); they differ only by `namespace`. The `tc-logview` config handles this — use `-e fx-ci` or `-e community-tc`. Each also has a `-scoped` variant (`fx-ci-scoped`, `community-tc-scoped`, `staging-scoped`) that reads a per-namespace tenant log view via the `tc-logview-reader` service account; use those with token-based auth (see §11).
 
 ## 4. Environment Resolution
 
@@ -139,8 +139,8 @@ Determine the environment from context using this priority:
 3. **TC root URL in message**:
    - `community-tc.services.mozilla.com` → community-tc
    - `firefox-ci-tc.services.mozilla.com` → fx-ci
-   - `stage.taskcluster.net` → staging
-   - `taskcluster-dev.net` → dev
+   - `stage.taskcluster.nonprod.cloudops.mozgcp.net` → staging
+   - `tc.dev.taskcluster.mozgcp.net` → dev
 4. **workerPoolId prefix**: pool IDs like `proj-*` are typically community-tc; `gecko-*`/`mobile-*` are fx-ci
 5. **If ambiguous**: Ask the user which environment
 
@@ -332,56 +332,30 @@ Map the user's problem to the right playbook, then read and follow it. Each play
 
 ## 11. Auth Setup
 
-When key files are missing, guide the user through setup. Keys go in `~/.config/tc-logview/keys/` (update `key_path` in `~/.config/tc-logview/config.yaml` to match).
+`tc-logview` accepts credentials three ways, in priority order: `TC_LOGVIEW_ACCESS_TOKEN` (a pre-issued bearer token) > `key_path` (service account JSON key) > ADC. Run `tc-logview auth` to print the exact command for an environment.
 
-### For `moz-fx-taskcluster-prod-4b87` (community-tc, fx-ci):
+### Preferred: impersonated short-lived token (recommended for agents/containers)
+
+A low-privilege reader service account already exists — `tc-logview-reader@moz-fx-taskcluster-prod.iam.gserviceaccount.com` — granted `roles/logging.viewAccessor` on the per-namespace tenant log views. Members of `workgroup:taskcluster/admins` may impersonate it. Mint a ~1h token on the host and pass only that token in; `tc-logview` never mints or refreshes tokens itself:
+
 ```bash
-mkdir -p ~/.config/tc-logview/keys
+TOKEN=$(gcloud auth print-access-token \
+  --impersonate-service-account=tc-logview-reader@moz-fx-taskcluster-prod.iam.gserviceaccount.com)
 
-# Create service account (one-time)
-gcloud iam service-accounts create tc-log-reader \
-  --project=moz-fx-taskcluster-prod-4b87 \
-  --display-name="TC Log Reader"
-
-# Grant logging read access
-gcloud projects add-iam-policy-binding moz-fx-taskcluster-prod-4b87 \
-  --member="serviceAccount:tc-log-reader@moz-fx-taskcluster-prod-4b87.iam.gserviceaccount.com" \
-  --role="roles/logging.viewer"
-
-# Create key file
-gcloud iam service-accounts keys create ~/.config/tc-logview/keys/tc-prod.json \
-  --iam-account=tc-log-reader@moz-fx-taskcluster-prod-4b87.iam.gserviceaccount.com
+TC_LOGVIEW_ACCESS_TOKEN=$TOKEN tc-logview query -e fx-ci-scoped --type monitor.error --since 1h
 ```
 
-### For `moz-fx-taskclust-nonprod-9302` (staging):
+Use the `-scoped` environments (`fx-ci-scoped`, `community-tc-scoped`, `staging-scoped`) with this token — the reader SA can read only those tenant log views. `TC_LOGVIEW_ACCESS_TOKEN` overrides whatever `config.yaml` says.
+
+### Alternative: ADC
+
+For `dev` (and any environment with `key_path` omitted), authenticate with Application Default Credentials:
+
 ```bash
-gcloud iam service-accounts create tc-log-reader \
-  --project=moz-fx-taskclust-nonprod-9302 \
-  --display-name="TC Log Reader"
-
-gcloud projects add-iam-policy-binding moz-fx-taskclust-nonprod-9302 \
-  --member="serviceAccount:tc-log-reader@moz-fx-taskclust-nonprod-9302.iam.gserviceaccount.com" \
-  --role="roles/logging.viewer"
-
-gcloud iam service-accounts keys create ~/.config/tc-logview/keys/tc-nonprod.json \
-  --iam-account=tc-log-reader@moz-fx-taskclust-nonprod-9302.iam.gserviceaccount.com
+gcloud auth application-default login
 ```
 
-### For `taskcluster-dev` (dev):
-```bash
-gcloud iam service-accounts create tc-log-reader \
-  --project=taskcluster-dev \
-  --display-name="TC Log Reader"
-
-gcloud projects add-iam-policy-binding taskcluster-dev \
-  --member="serviceAccount:tc-log-reader@taskcluster-dev.iam.gserviceaccount.com" \
-  --role="roles/logging.viewer"
-
-gcloud iam service-accounts keys create ~/.config/tc-logview/keys/tc-dev.json \
-  --iam-account=tc-log-reader@taskcluster-dev.iam.gserviceaccount.com
-```
-
-After placing the key, update `~/.config/tc-logview/config.yaml` with the correct `key_path` for that environment, then run `tc-logview sync`.
+After changing credentials, run `tc-logview sync`.
 
 ## 12. Anti-Patterns
 
