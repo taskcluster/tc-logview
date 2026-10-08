@@ -296,3 +296,23 @@ func TestBuild_PresetFilterUnknownField(t *testing.T) {
 		t.Fatal("expected error for unknown field in preset context")
 	}
 }
+
+func TestBuild_WhereQuotedUnquotedAndCommaValues(t *testing.T) {
+	got, err := Build(Params{
+		Cluster:    "c",
+		Where:      []string{`name="gcpCredentials"`, `runId=1`, `message="a,b"`},
+		FieldNames: []string{"name", "runId", "message"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		`jsonPayload.Fields.name="gcpCredentials"`,
+		`jsonPayload.Fields.runId=1`,
+		`jsonPayload.Fields.message="a,b"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("filter missing %q, got: %s", want, got)
+		}
+	}
+}

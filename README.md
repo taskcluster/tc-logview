@@ -7,7 +7,7 @@ A CLI tool for querying GCP Cloud Logging for [Taskcluster](https://taskcluster.
 - **Schema-aware queries** — Fetches log type definitions from Taskcluster references. Knows that `worker-stopped` has fields `workerId`, `workerPoolId`, `reason`, etc.
 - **Field shorthand** — Write `--where 'workerPoolId="proj-misc"'` instead of `--filter 'jsonPayload.Fields.workerPoolId="proj-misc"'`
 - **Auto service narrowing** — When a log type is unique to one service (e.g., `worker-stopped` → `worker-manager`), the tool automatically narrows the query
-- **Multiple output formats** — Aligned columns (default), JSONL (`--json`), or raw GCP entries (`--raw`)
+- **Multiple output formats** — Aligned columns (default), JSONL (`--json`), or full raw GCP entries as JSONL (`--raw`)
 - **Result caching** — Queries with absolute time windows are cached for 14 days, keyed by filter + time range hash
 - **Environment management** — Configure multiple Taskcluster deployments, auto-detect from `TASKCLUSTER_ROOT_URL`
 
@@ -224,8 +224,12 @@ tc-logview query -e fx-ci --type task-claimed \
 # JSONL output, pipe to jq
 tc-logview query -e fx-ci --type hook-fire --json | jq '.taskId'
 
-# Raw GCP entries for debugging
-tc-logview query -e fx-ci --type worker-stopped --raw --limit 5
+# Raw GCP entries for debugging (one compact JSON object per line)
+tc-logview query -e fx-ci --type worker-stopped --raw --limit 5 | jq '.jsonPayload.Fields'
+
+# Multiple --where flags are ANDed; values may be quoted and contain commas
+tc-logview query -e fx-ci --type monitor.apiMethod \
+  --where 'name="gcpCredentials"' --where 'statusCode="500"'
 
 # Page through cached results
 tc-logview query -e fx-ci --type worker-stopped \
@@ -299,7 +303,7 @@ tc-logview query --type worker-stopped
 | `-e, --env` | Environment name | from `TASKCLUSTER_ROOT_URL` |
 | `--type` | Log type (e.g. `worker-stopped`, `monitor.error`) | |
 | `--service` | Filter by service (useful for shared types like `monitor.apiMethod`) | auto-detected if type is unique |
-| `--where` | Field shorthand filter (e.g. `workerPoolId="proj-misc"`) | |
+| `--where` | Field shorthand filter (e.g. `workerPoolId="proj-misc"`); repeatable, each value taken verbatim | |
 | `--filter` | Raw GCP filter expression | |
 | `--since` | Relative time window (`30m`, `2h`, `1d`) | `1h` |
 | `--from` | Absolute start time (RFC3339) | |
@@ -307,7 +311,7 @@ tc-logview query --type worker-stopped
 | `--limit` | Max entries | `100` |
 | `--offset` | Skip N entries (cached results only) | `0` |
 | `--json` | JSONL output | |
-| `--raw` | Full raw GCP entries | |
+| `--raw` | Full raw GCP entries, one compact JSON object per line (JSONL) | |
 | `--no-cache` | Skip result cache | |
 
 ## How it works
@@ -319,6 +323,14 @@ The tool builds GCP filters from three layers:
 1. **Scope** — `resource.labels.cluster_name` (from environment config); `resource.labels.namespace_name` when `namespace` is set and the resource type supports it
 2. **Type** — `jsonPayload.Type` + `jsonPayload.serviceContext.service` (from `--type`, auto-narrowed)
 3. **User** — `--where` (expanded to `jsonPayload.Fields.*`) and `--filter` (raw passthrough)
+
+### Quotas and pagination
+
+Cloud Logging limits read requests (default 60 per minute per project). tc-logview sizes each
+page to the remaining `--limit` (max 1000 per request), so a query with `--limit 100` costs one
+read request. If the quota is exceeded (`ResourceExhausted` / `RATE_LIMIT_EXCEEDED`), the request
+is retried up to 4 more times with exponential backoff (10s, 20s, 40s, 60s), with a short notice
+printed to stderr before each retry. Cached results (see below) cost no read requests.
 
 ### Caching
 

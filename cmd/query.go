@@ -49,7 +49,9 @@ var queryCmd = &cobra.Command{
 func init() {
 	queryCmd.Flags().StringVar(&queryType, "type", "", "log type (e.g. worker-stopped)")
 	queryCmd.Flags().StringVar(&queryService, "service", "", "filter by service (for shared types)")
-	queryCmd.Flags().StringSliceVar(&queryWhere, "where", nil, "field shorthand filter (e.g. workerPoolId=\"proj-misc\")")
+	// StringArray (not StringSlice): each --where is taken verbatim. StringSlice
+	// CSV-parses values, which rejects quotes (name="x") and splits on commas.
+	queryCmd.Flags().StringArrayVar(&queryWhere, "where", nil, "field shorthand filter, repeatable (e.g. workerPoolId=\"proj-misc\")")
 	queryCmd.Flags().StringVar(&queryFilter, "filter", "", "raw GCP filter expression")
 	queryCmd.Flags().StringVar(&querySince, "since", "", "relative time window (e.g. 2h, 30m, 1d)")
 	queryCmd.Flags().StringVar(&queryFrom, "from", "", "absolute start time (RFC3339)")
@@ -57,7 +59,7 @@ func init() {
 	queryCmd.Flags().IntVar(&queryLimit, "limit", 100, "max entries to return")
 	queryCmd.Flags().IntVar(&queryOffset, "offset", 0, "skip N entries (cached results only)")
 	queryCmd.Flags().BoolVar(&queryJSON, "json", false, "output as JSONL")
-	queryCmd.Flags().BoolVar(&queryRaw, "raw", false, "output full raw GCP entries")
+	queryCmd.Flags().BoolVar(&queryRaw, "raw", false, "output full raw GCP entries as JSONL (one compact object per line)")
 	queryCmd.Flags().BoolVar(&queryNoCache, "no-cache", false, "skip cache")
 	rootCmd.AddCommand(queryCmd)
 }
