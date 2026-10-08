@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -13,8 +14,11 @@ import (
 	"golang.org/x/oauth2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/taskcluster/tc-logview/internal/format"
 )
@@ -78,28 +82,118 @@ func AuthModeLabel(auth AuthConfig) string {
 	}
 }
 
+// maxPageSize is the largest page size Cloud Logging's entries.list accepts.
+const maxPageSize = 1000
+
+// Retry settings for quota (ResourceExhausted) errors. Cloud Logging's read
+// quota is per minute (default 60 read requests/min), so the backoff starts at
+// several seconds and grows to roughly a minute. Variables so tests can shrink
+// them.
+var (
+	retryAttempts     = 5
+	retryInitialDelay = 10 * time.Second
+	retryMaxDelay     = 60 * time.Second
+	// retryNotify receives a short human-readable notice before each retry.
+	retryNotify = func(msg string) { fmt.Fprintln(os.Stderr, msg) }
+)
+
+// pageFetcher fetches one page of up to pageSize entries starting at
+// pageToken, returning the entries and the next page token ("" when done).
+type pageFetcher func(ctx context.Context, pageToken string, pageSize int) ([]*logging.Entry, string, error)
+
 // Query executes a GCP Cloud Logging filter query and returns up to limit
 // entries, newest first (reversed before display). When resourceName is
 // non-empty, the query is scoped to that resource (e.g. a log view) instead of
 // the client's project; an empty resourceName preserves project-scope behavior.
+//
+// Pages are sized to the remaining limit (capped at the API maximum) so small
+// queries cost a single read request. Quota errors are retried with backoff.
 func (c *Client) Query(ctx context.Context, filter, resourceName string, limit int) (*QueryResult, error) {
-	it := c.adminClient.Entries(ctx, queryOptions(filter, resourceName)...)
-
-	result := &QueryResult{}
-	for i := 0; i < limit; i++ {
-		entry, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("error iterating log entries: %w", err)
-		}
-
-		result.Entries = append(result.Entries, entryToMap(entry))
+	opts := queryOptions(filter, resourceName)
+	fetch := func(ctx context.Context, pageToken string, pageSize int) ([]*logging.Entry, string, error) {
+		// A fresh iterator per page: iterator errors are sticky, so a retry
+		// after a quota error needs a new one, resumed from the page token.
+		it := c.adminClient.Entries(ctx, opts...)
+		var entries []*logging.Entry
+		next, err := iterator.NewPager(it, pageSize, pageToken).NextPage(&entries)
+		return entries, next, err
 	}
 
+	entries, err := collectEntries(ctx, fetch, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error iterating log entries: %w", err)
+	}
+
+	result := &QueryResult{}
+	for _, entry := range entries {
+		result.Entries = append(result.Entries, entryToMap(entry))
+	}
 	result.Total = len(result.Entries)
 	return result, nil
+}
+
+// collectEntries pages through fetch until limit entries are collected or the
+// results are exhausted, retrying each page on quota errors.
+func collectEntries(ctx context.Context, fetch pageFetcher, limit int) ([]*logging.Entry, error) {
+	var all []*logging.Entry
+	token := ""
+	for len(all) < limit {
+		pageSize := min(limit-len(all), maxPageSize)
+		var page []*logging.Entry
+		var next string
+		err := withRetry(ctx, func() error {
+			var err error
+			page, next, err = fetch(ctx, token, pageSize)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if next == "" {
+			break
+		}
+		token = next
+	}
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+// withRetry calls fn, retrying with exponential backoff while it returns a
+// quota/rate-limit error. It stops early if ctx is cancelled.
+func withRetry(ctx context.Context, fn func() error) error {
+	delay := retryInitialDelay
+	for attempt := 1; ; attempt++ {
+		err := fn()
+		if err == nil || !isQuotaError(err) || attempt >= retryAttempts {
+			return err
+		}
+		retryNotify(fmt.Sprintf("GCP Logging quota exceeded; retrying in %s (attempt %d/%d)...",
+			delay, attempt+1, retryAttempts))
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w (gave up waiting to retry: %v)", err, ctx.Err())
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, retryMaxDelay)
+	}
+}
+
+// isQuotaError reports whether err is a Cloud Logging quota / rate-limit
+// error (gRPC ResourceExhausted, or a RATE_LIMIT_EXCEEDED / quota message).
+func isQuotaError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if s, ok := status.FromError(err); ok && s.Code() == codes.ResourceExhausted {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "ResourceExhausted") ||
+		strings.Contains(msg, "RATE_LIMIT_EXCEEDED") ||
+		strings.Contains(msg, "Quota exceeded")
 }
 
 // queryOptions builds the logadmin EntriesOptions for a query. When
@@ -150,6 +244,11 @@ func entryToMap(entry *logging.Entry) map[string]interface{} {
 	switch p := entry.Payload.(type) {
 	case map[string]interface{}:
 		m["jsonPayload"] = p
+	case *structpb.Struct:
+		// logadmin surfaces LogEntry.jsonPayload as a *structpb.Struct; it
+		// must be labelled jsonPayload (not protoPayload) so raw output
+		// matches the field paths used in GCP filters.
+		m["jsonPayload"] = p.AsMap()
 	case string:
 		m["textPayload"] = p
 	case proto.Message:

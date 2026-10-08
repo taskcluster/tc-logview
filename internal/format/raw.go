@@ -5,23 +5,17 @@ import (
 	"io"
 )
 
-// Raw formats log entries by pretty-printing each entry's Raw map as
-// indented JSON, separated by newlines.
+// Raw formats log entries as JSON Lines: each entry's full Raw map is written
+// as one compact JSON object per line, suitable for piping to jq or other
+// line-based tools.
 type Raw struct{}
 
-// Format writes each entry's Raw map as pretty-printed JSON (2-space indent)
-// to w, with a blank line between entries.
+// Format writes each entry's Raw map as a single-line JSON object to w.
 func (r *Raw) Format(w io.Writer, entries []LogEntry, fieldOrder []string, total int) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
 
-	for i, e := range entries {
-		if i > 0 {
-			if _, err := io.WriteString(w, "\n"); err != nil {
-				return err
-			}
-		}
+	for _, e := range entries {
 		if err := enc.Encode(e.Raw); err != nil {
 			return err
 		}

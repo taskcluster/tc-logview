@@ -155,13 +155,16 @@ tc-logview query -e <ENV> --type <LOG_TYPE> --since <TIME>
 Key flags:
 - `-e <env>` — environment (`fx-ci`, `community-tc`, `staging`, `dev`). Omit if `TASKCLUSTER_ROOT_URL` is set.
 - `--type <type>` — log type (e.g. `worker-stopped`, `monitor.error`). Auto-narrows by service.
-- `--where '<field>=<value>'` — filter on a known field without writing the full GCP path
+- `--where '<field>=<value>'` — filter on a known field without writing the full GCP path (repeatable; values are taken verbatim, so quotes and commas are fine)
 - `--filter '<raw>'` — raw GCP filter expression (for advanced cases or unknown fields)
 - `--since <duration>` — time window: `30m`, `2h`, `6h`, `1d` (default: `1h`)
 - `--from / --to` — absolute RFC3339 timestamps for precise incident windows
 - `--limit <n>` — max entries (default: 100)
 - `--json` — JSONL output for piping to `jq`
+- `--raw` — full GCP entries, also JSONL (one compact object per line); payload is under `.jsonPayload` (or `.textPayload` / `.protoPayload`)
 - `--no-cache` — bypass result cache
+
+Cloud Logging allows ~60 read requests/min. tc-logview retries quota errors (`ResourceExhausted`) with backoff (notice on stderr), but avoid firing many queries in rapid succession; prefer cached time windows (`--from/--to`) when re-running.
 
 **Discover available log types:**
 ```bash

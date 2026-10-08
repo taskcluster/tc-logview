@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Automatic retry with exponential backoff (10s, 20s, 40s, 60s; up to 5 attempts) when Cloud Logging returns a quota / rate-limit error (`ResourceExhausted`, `RATE_LIMIT_EXCEEDED`, e.g. the 60 read requests/min limit). A short notice is printed to stderr before each retry; retries stop if the context is cancelled. Interrupted pagination resumes from the last page token.
+
+### Changed
+
+- `--raw` now emits one compact JSON object per line (JSONL), consistent with `--json`, instead of pretty-printed multi-line objects.
+- Query page size now matches `--limit` (capped at the API maximum of 1000), so small queries cost a single read request.
+
+### Fixed
+
+- `--where` values containing double quotes (e.g. `--where 'name="gcpCredentials"'`, as documented) or commas no longer fail with `bare " in non-quoted-field`. Each `--where` is now taken verbatim; multiple `--where` flags are still ANDed.
+- Raw output mislabelled JSON payloads as `protoPayload`; they are now reported as `jsonPayload`, matching the field paths used in GCP filters (e.g. `jsonPayload.reason` for k8s events). Genuine proto payloads (e.g. audit logs) are still reported as `protoPayload`.
+
 ## v1.4.1 - 2026-06-02
 
 ### Added
