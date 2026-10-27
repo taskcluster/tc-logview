@@ -113,10 +113,26 @@ func (c *Client) Query(ctx context.Context, filter, resourceName string, limit i
 	fetch := func(ctx context.Context, pageToken string, pageSize int) ([]*logging.Entry, string, error) {
 		// A fresh iterator per page: iterator errors are sticky, so a retry
 		// after a quota error needs a new one, resumed from the page token.
+		// Not iterator.Pager: logadmin's fetch reports iterator.Done for the
+		// final page, and Pager discards that page's buffered entries.
 		it := c.adminClient.Entries(ctx, opts...)
+		pi := it.PageInfo()
+		pi.MaxSize = pageSize
+		pi.Token = pageToken
 		var entries []*logging.Entry
-		next, err := iterator.NewPager(it, pageSize, pageToken).NextPage(&entries)
-		return entries, next, err
+		for {
+			entry, err := it.Next()
+			if err == iterator.Done {
+				return entries, "", nil
+			}
+			if err != nil {
+				return nil, "", err
+			}
+			entries = append(entries, entry)
+			if pi.Remaining() == 0 {
+				return entries, pi.Token, nil
+			}
+		}
 	}
 
 	entries, err := collectEntries(ctx, fetch, limit)
