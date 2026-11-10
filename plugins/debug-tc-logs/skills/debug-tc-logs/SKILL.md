@@ -56,7 +56,7 @@ The `taskcluster` CLI is a first-class debugging tool for inspecting task state,
 TASKCLUSTER_ROOT_URL=https://community-tc.services.mozilla.com taskcluster ...
 
 # staging
-TASKCLUSTER_ROOT_URL=https://stage.taskcluster.nonprod.cloudops.mozgcp.net taskcluster ...
+TASKCLUSTER_ROOT_URL=https://stage.taskcluster.nonprod.webservices.mozgcp.net taskcluster ...
 ```
 
 ### Key Commands
@@ -139,7 +139,7 @@ Determine the environment from context using this priority:
 3. **TC root URL in message**:
    - `community-tc.services.mozilla.com` → community-tc
    - `firefox-ci-tc.services.mozilla.com` → fx-ci
-   - `stage.taskcluster.nonprod.cloudops.mozgcp.net` → staging
+   - `stage.taskcluster.nonprod.webservices.mozgcp.net` → staging
    - `tc.dev.taskcluster.mozgcp.net` → dev
 4. **workerPoolId prefix**: pool IDs like `proj-*` are typically community-tc; `gecko-*`/`mobile-*` are fx-ci
 5. **If ambiguous**: Ask the user which environment

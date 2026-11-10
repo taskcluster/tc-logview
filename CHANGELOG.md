@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Staging root URL updated to `https://stage.taskcluster.nonprod.webservices.mozgcp.net` (the old `cloudops` hostname no longer resolves). Existing configs need updating by hand.
 - `--where` values containing double quotes (e.g. `--where 'name="gcpCredentials"'`, as documented) or commas no longer fail with `bare " in non-quoted-field`. Each `--where` is now taken verbatim; multiple `--where` flags are still ANDed.
 - Raw output mislabelled JSON payloads as `protoPayload`; they are now reported as `jsonPayload`, matching the field paths used in GCP filters (e.g. `jsonPayload.reason` for k8s events). Genuine proto payloads (e.g. audit logs) are still reported as `protoPayload`.
 

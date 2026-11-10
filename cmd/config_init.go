@@ -68,7 +68,7 @@ environments:
     project_id: "moz-fx-webservices-high-nonpro"
     cluster: "webservices-high-nonprod"
     namespace: "taskcluster-stage"
-    root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
+    root_url: "https://stage.taskcluster.nonprod.webservices.mozgcp.net"
     key_path: "~/.config/tc-logview/keys/tc-staging.json"
   dev:
     project_id: "taskcluster-dev"
@@ -104,7 +104,7 @@ environments:
     log_bucket: "gke-taskcluster-stage-log-bucket"
     log_location: "global"
     log_view: "_AllLogs"
-    root_url: "https://stage.taskcluster.nonprod.cloudops.mozgcp.net"
+    root_url: "https://stage.taskcluster.nonprod.webservices.mozgcp.net"
 `
 		if err := os.WriteFile(cfgPath, []byte(example), 0o644); err != nil {
 			return fmt.Errorf("writing config: %w", err)
