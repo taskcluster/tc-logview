@@ -98,7 +98,7 @@ environments:
     log_view: "_AllLogs"
     root_url: "https://community-tc.services.mozilla.com"
   staging-scoped:
-    project_id: "moz-fx-webservices-high-nonpro"
+    project_id: "moz-fx-taskcluster-nonprod"
     cluster: "webservices-high-nonprod"
     namespace: "taskcluster-stage"
     log_bucket: "gke-taskcluster-stage-log-bucket"

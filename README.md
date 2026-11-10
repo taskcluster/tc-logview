@@ -83,7 +83,7 @@ environments:
     log_view: "_AllLogs"
     root_url: "https://community-tc.services.mozilla.com"
   staging-scoped:
-    project_id: "moz-fx-webservices-high-nonpro"
+    project_id: "moz-fx-taskcluster-nonprod"
     cluster: "webservices-high-nonprod"
     namespace: "taskcluster-stage"
     log_bucket: "gke-taskcluster-stage-log-bucket"
@@ -163,9 +163,9 @@ The same `tc-logview-reader` service account backs all scoped envs:
 |---|---|---|
 | `fx-ci-scoped` | `moz-fx-taskcluster-prod` | `gke-taskcluster-prod-log-bucket` |
 | `community-tc-scoped` | `moz-fx-taskcluster-prod` | `gke-taskcluster-communitytc-log-bucket` |
-| `staging-scoped` | `moz-fx-webservices-high-nonpro` | `gke-taskcluster-stage-log-bucket` |
+| `staging-scoped` | `moz-fx-taskcluster-nonprod` | `gke-taskcluster-stage-log-bucket` |
 
-The reader SA lives in the prod project; for `staging-scoped` it's granted `viewAccessor` on the stage bucket in the nonprod project, so the same impersonation command works for all three.
+The reader SA lives in the prod project; for `staging-scoped` it's granted `viewAccessor` on the stage bucket in `moz-fx-taskcluster-nonprod`, so the same impersonation command works for all three.
 
 > Infrastructure presets (`k8s.*`, `cloudsql.*`) are **not** available on `*-scoped` envs — those logs live in other projects/buckets the reader SA can't see. Use the broad envs (with your own ADC) for infra queries.
 
